@@ -532,7 +532,8 @@ finished). A gated repo shows **Add a token**, which opens the token form in pla
     Documents (OCR) and the domain sections, with Download, Cancel and Delete per row and Test on domain rows; on
     the Simulator GGUF only), **Find on Hugging Face** searches against this device only, starts with
     **Compatible only** on and keeps text-generation, image-text-to-text and any-to-any repos plus those that
-    declare no pipeline (`HFPipelineFilter.chat`), and **On this device** lists the downloaded models. A finished
+    declare no pipeline (`HFPipelineFilter.chat`), **On this device** lists the downloaded models, and **Compare
+    engines** runs `EngineBenchmark` (see [below](#compare-engines-in-the-example)). A finished
     download is listed there without a relaunch, and again after one; a model downloaded while the sheet is open
     becomes the chat model when it closes, unless you picked one. Only downloaded models that take text or images
     can be picked, and one that can't load now (too large for free memory, or MLX on the Simulator) is disabled
@@ -561,6 +562,29 @@ finished). A gated repo shows **Add a token**, which opens the token form in pla
 On the Simulator the format filter starts on GGUF, MLX models are left out of TonamoxExample's catalog list and
 disabled in its Chat and Voice pickers, in TonamoxUI's Text menu and in Try it (MLX can't run there; picked anywhere
 else, they fail to load with an error), and "this device" reports the Mac's memory, not an iPhone's.
+
+#### Compare engines in the Example
+
+**Compare engines** (Chat's model sheet, iOS and macOS) runs
+[`EngineBenchmark`]({{ '/api/core' | relative_url }}#engine-benchmark) from the app:
+
+- **Engines.** Downloaded models that take text, run in the app by llama.cpp (GGUF) or MLX; one that can't load now
+  is disabled with the reason, as in Chat's picker. Then every model that runs on this machine on a detected
+  llama-server, Ollama or Magnitude (`LocalProviderDetector.detectAll()`, with **Refresh**). Nothing is downloaded.
+  On an iPhone the servers' default addresses are the phone itself, so usually only the in-app models are listed;
+  the Simulator reaches the Mac's servers.
+- **Settings.** The three workloads (each with its estimated prompt size), measured runs (1–10, after one warm-up
+  run) and temperature 0 or 0.7.
+- **Run.** A run that includes an in-app model first unloads the app's other loaded models
+  (`ModelManager.evictAll()`). On iOS the screen stays awake while it runs, since the app unloads every model in
+  the background, and the sheet can't be swiped away. Progress shows `BenchmarkProgress.summary`. **Cancel**, or
+  leaving the screen, stops the run and keeps the partial report; a model that is loading finishes loading first.
+- **Results.** One section per workload with, per engine, the median time to first token, prefill and decode tok/s
+  (the min–max of TTFT and decode under them when runs differ), prompt → generated tokens, peak memory (this app's
+  footprint and what the model added over the footprint before it loaded; not measured for servers), output match
+  and provenance (≈ marks estimated counts; server timings are taken by the app). With two or more engines,
+  **Fastest decode** and **Fastest first token** are marked. `modelsDiffer(in:)` and
+  `promptTruncationSuspects(in:)` add warnings, and engines that did not load are listed apart.
 
 ---
 

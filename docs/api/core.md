@@ -358,7 +358,8 @@ ModelManager.shared.isLoaded(_ model: Model) -> Bool
 ### Engine benchmark
 
 `EngineBenchmark` runs the same workloads through several engines, one at a time, and reports which is fastest
-on this device. `tonamox bench` is its command-line front end.
+on this device. `tonamox bench` is its command-line front end, and TonamoxExample's **Compare engines** screen
+(Chat's model sheet) a SwiftUI one.
 
 ```swift
 let statuses = await LocalProviderDetector.detectAll()

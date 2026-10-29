@@ -169,6 +169,10 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   `OutputAgreement` with the first engine at temperature 0. Each run's system prompt starts with a run marker so
   prompt caches cannot turn later runs into hits. `tonamox bench` drives it from the command line.
   `GenerationStats.Provenance` is now `Codable`.
+- TonamoxExample: **Compare engines** in Chat's model sheet runs `EngineBenchmark` over the downloaded models and
+  the models of detected local servers, with workload, run-count and temperature settings, progress and Cancel,
+  and per-workload results that mark the fastest decode and time to first token and warn when the engines ran
+  different models or a server may have cut the prompt.
 
 ### Changed
 

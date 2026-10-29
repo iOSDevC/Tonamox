@@ -73,6 +73,7 @@ struct ChatConversationsSheet: View {
 enum ChatModelRoute: Hashable {
     case catalog
     case huggingFace
+    case compareEngines
 }
 
 /// Chat's model picker: the downloaded models with their capability badges, plus the catalog and a Hugging Face
@@ -113,6 +114,14 @@ struct ChatModelSheet: View {
                         Text("Nothing downloaded yet.").foregroundStyle(.secondary)
                     }
                 }
+                Section {
+                    NavigationLink(value: ChatModelRoute.compareEngines) {
+                        Label("Compare engines", systemImage: "gauge.with.dots.needle.67percent")
+                    }
+                } footer: {
+                    Text("Times the downloaded models and any local llama-server, Ollama or Magnitude on the same "
+                         + "prompts.")
+                }
             }
             .navigationTitle("Chat model")
             #if os(iOS)
@@ -122,6 +131,7 @@ struct ChatModelSheet: View {
                 switch route {
                 case .catalog: ChatCatalogList()
                 case .huggingFace: ChatModelFinder()
+                case .compareEngines: EngineCompareView()
                 }
             }
             .toolbar {
