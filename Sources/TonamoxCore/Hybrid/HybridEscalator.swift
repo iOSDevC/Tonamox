@@ -115,6 +115,8 @@ public final class HybridEscalator {
     /// Send `payload` to `target` exactly as built (no recompression or redaction),
     /// stream the answer, and record cost. An earlier request with the same provider,
     /// model, messages and `maxTokens` is answered from ``ResponseCache`` without a remote call.
+    /// An empty or whitespace-only answer (e.g. a reasoning model that spent `maxTokens` thinking) is
+    /// returned but not cached, so asking again calls the remote again.
     public func escalate(
         _ payload: EscalationPayload,
         to target: RemoteTarget,
@@ -144,8 +146,10 @@ public final class HybridEscalator {
             throw error
         }
 
-        ResponseCache.shared.insert(
-            answer, provider: target.provider.id, model: target.modelID, payload: payload)
+        if !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ResponseCache.shared.insert(
+                answer, provider: target.provider.id, model: target.modelID, payload: payload)
+        }
         record(target, usage: backend.lastUsage, compression: compressed)
 
         return Result(

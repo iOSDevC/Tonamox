@@ -40,6 +40,12 @@ extension HardwareProfile {
     /// `task_vm_info.phys_footprint` of this process: the figure `os_proc_available_memory()` subtracts from the
     /// limit (`<os/proc.h>`).
     nonisolated static func physicalFootprintBytes() -> Int? {
+        processMemoryBytes()?.footprint
+    }
+
+    /// `phys_footprint` and `resident_size` of this process from one `TASK_VM_INFO` call. `resident_size` also counts
+    /// clean file-backed pages, such as a memory-mapped GGUF file, which `phys_footprint` leaves out.
+    nonisolated static func processMemoryBytes() -> (footprint: Int, resident: Int)? {
         var info = task_vm_info_data_t()
         var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
         let result = withUnsafeMutablePointer(to: &info) { pointer in
@@ -48,6 +54,6 @@ extension HardwareProfile {
             }
         }
         guard result == KERN_SUCCESS, info.phys_footprint > 0 else { return nil }
-        return Int(info.phys_footprint)
+        return (Int(info.phys_footprint), Int(info.resident_size))
     }
 }

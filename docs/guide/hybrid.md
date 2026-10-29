@@ -286,14 +286,16 @@ await crew.run(topic: "Q3 security posture", policy: policy, consent: myConsentG
   `OpenAICompatibleProvider`, a public `AskTargetResolver` base URL, whose provider id is
   `custom.<host>` or `custom.<host>:<port>`) is unpriced: its record has `costUSD == nil`, as does
   any cloud call whose provider reports no usage, or only one of the two token counts. A call that
-  throws after it streamed text (a cancel, a dropped stream) is still recorded, with the usage the
-  provider reported before failing or else `nil`; a call that fails before any output is not.
+  throws after it streamed text or reasoning (a cancel, a dropped stream) is still recorded, with the
+  usage the provider reported before failing or else `nil`; a call that fails before any output is not.
   `sessionCostUSD` sums the priced records since the session started, `unpricedRecordCount` counts
   the others and `sessionRecordCount` counts both; `startNewSession()` restarts them and keeps
   `records`. The Example app's Hybrid settings show these totals and a **Start new session** button.
 - **`ResponseCache`** avoids paying twice for a repeated request. `HybridEscalator` keys it on
   provider id, model id and the whole payload: the system prompt, the user message (context +
-  question) and `maxTokens`. It is held in memory (64 entries, FIFO, cleared on relaunch).
+  question) and `maxTokens`. It is held in memory (64 entries, FIFO, cleared on relaunch). An empty
+  or whitespace-only answer, such as a reasoning model's that spent `maxTokens` thinking, is not
+  cached, so the same request is sent again.
 
 Set prices on the ledger your `HybridEscalator` uses (`HybridEscalator(ledger:)`, `.shared` by
 default), in USD per 1M tokens. A model-specific price wins over a provider-wide one:

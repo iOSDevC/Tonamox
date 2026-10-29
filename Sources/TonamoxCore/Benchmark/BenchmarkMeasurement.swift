@@ -16,6 +16,9 @@ struct BenchmarkPrompt: Sendable, Hashable {
                         user: workload.userPrompt, maxTokens: maxTokens)
     }
 
+    /// ``runMarker(workloadID:slot:nonce:)`` with placeholders, for ``BenchmarkReport/runMarkerFormat``.
+    static let runMarkerFormat = "[run {slot} {workload} {nonce}]\n"
+
     static func runMarker(workloadID: String, slot: Int, nonce: String) -> String {
         "[run \(slot) \(workloadID) \(nonce)]\n"
     }
@@ -112,22 +115,24 @@ struct DeltaClock {
     }
 }
 
-// MARK: - FootprintSampler
+// MARK: - MemorySampler
 
-/// Tracks this process's peak `phys_footprint`, polled off the main actor so a busy generation is still sampled.
-final class FootprintSampler: Sendable {
+/// Tracks this process's peak memory (``BenchmarkMemory``), polled off the main actor so a busy generation is still
+/// sampled.
+final class MemorySampler: Sendable {
     struct Readings {
-        var overall: Int?
-        var window: Int?
+        var overall: BenchmarkMemory?
+        var window: BenchmarkMemory?
+        var isWindowOpen = false
     }
 
     private let peaks = OSAllocatedUnfairLock(initialState: Readings())
 
     func record() {
-        guard let bytes = HardwareProfile.physicalFootprintBytes() else { return }
+        guard let sample = BenchmarkMemory.current() else { return }
         peaks.withLock { state in
-            state.overall = max(state.overall ?? bytes, bytes)
-            state.window = max(state.window ?? bytes, bytes)
+            state.overall = sample.peak(with: state.overall)
+            if state.isWindowOpen { state.window = sample.peak(with: state.window) }
         }
     }
 
@@ -142,19 +147,28 @@ final class FootprintSampler: Sendable {
         }
     }
 
-    /// Starts a new window for ``endWindow()``.
+    /// Opens a window for ``endWindow()``.
     func beginWindow() {
-        peaks.withLock { $0.window = nil }
+        peaks.withLock { state in
+            state.window = nil
+            state.isWindowOpen = true
+        }
         record()
     }
 
-    /// The peak since ``beginWindow()``.
-    func endWindow() -> Int? {
+    /// The peak since ``beginWindow()``, and closes the window; `nil` when none is open.
+    func endWindow() -> BenchmarkMemory? {
         record()
-        return peaks.withLock { $0.window }
+        return peaks.withLock { state in
+            defer {
+                state.window = nil
+                state.isWindowOpen = false
+            }
+            return state.window
+        }
     }
 
-    var overallPeak: Int? {
+    var overallPeak: BenchmarkMemory? {
         record()
         return peaks.withLock { $0.overall }
     }

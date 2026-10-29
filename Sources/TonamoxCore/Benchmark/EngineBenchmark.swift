@@ -23,13 +23,16 @@ import MLX
 ///   at a time. ``BenchmarkCandidate/inProcess(_:label:)`` loads an instance of its own, so an instance the app holds
 ///   is never reused or released; ModelManager may still evict the app's models to make room, as for any load. Evict
 ///   them first for a clean memory reading.
-/// - Each workload runs ``BenchmarkSettings/warmUpRuns`` discarded runs, then ``BenchmarkSettings/measuredRuns``.
+/// - Each workload runs ``BenchmarkSettings/warmUpRuns`` warm-up runs, kept in the report but left out of its
+///   metrics, then ``BenchmarkSettings/measuredRuns``.
 /// - Every run's system prompt starts with a run marker unique among the candidate's runs, so prompt caches (Tonamox's
 ///   GGUF and MLX prompt reuse, llama-server, Ollama, Magnitude) can share at most the chat template's opening and a
 ///   few marker tokens. Run `n` of every candidate gets the same marker, so outputs stay comparable; a server candidate
 ///   listed twice gets its own markers.
 /// - Every candidate gets the same prompts, temperature and token budget.
-/// - Cancelling the task stops the stream in flight and returns the partial report.
+/// - Cancelling the task stops the stream in flight and returns the partial report. It also cancels an in-process
+///   model's load: a download stops, while a load that cannot stop partway finishes and the model is released
+///   without running.
 ///
 /// A failed load or run is recorded in the report and the benchmark goes on.
 public struct EngineBenchmark: Sendable {
@@ -186,7 +189,8 @@ public struct BenchmarkModelIdentity: Codable, Sendable, Hashable {
 public struct BenchmarkSettings: Codable, Sendable, Hashable {
     /// Runs that count; at least 1. Default 3.
     public let measuredRuns: Int
-    /// Discarded runs before the measured ones; they absorb a server's lazy model load. Default 1.
+    /// Runs before the measured ones, left out of the metrics; they absorb a server's lazy model load and the first
+    /// run's one-time costs. Default 1.
     public let warmUpRuns: Int
     /// Sampling temperature for every candidate; 0 (the default) is greedy, which makes outputs comparable.
     public let temperature: Float
@@ -288,7 +292,8 @@ extension EngineBenchmark {
             }
             return BenchmarkCandidateResult(
                 id: id, label: candidate.label, timing: .clientSide, serverKind: kind, weights: candidate.weights,
-                memoryBeforeLoadBytes: nil, peakMemoryBytes: nil, loadSeconds: nil, loadError: nil, results: results)
+                runMarkerNonce: nonce, memoryBeforeLoad: nil, peakMemory: nil, loadSeconds: nil, loadError: nil,
+                results: results)
         }
     }
 
@@ -298,8 +303,8 @@ extension EngineBenchmark {
         onEvent: @escaping @MainActor (BenchmarkEvent) -> Void
     ) async -> BenchmarkCandidateResult {
         onEvent(.loading(candidateID: cursor.candidateID, label: candidate.label))
-        let memoryBefore = HardwareProfile.physicalFootprintBytes()
-        let sampler = FootprintSampler()
+        let memoryBefore = BenchmarkMemory.current()
+        let sampler = MemorySampler()
         let polling = sampler.startPolling()
         defer { polling.cancel() }
         let loadStart = ContinuousClock.now
@@ -309,8 +314,8 @@ extension EngineBenchmark {
         } catch {
             return BenchmarkCandidateResult(
                 id: cursor.candidateID, label: candidate.label, timing: .inProcess, serverKind: nil,
-                weights: candidate.weights, memoryBeforeLoadBytes: memoryBefore, peakMemoryBytes: sampler.overallPeak,
-                loadSeconds: nil, loadError: Self.describe(error), results: [])
+                weights: candidate.weights, runMarkerNonce: cursor.nonce, memoryBeforeLoad: memoryBefore,
+                peakMemory: sampler.overallPeak, loadSeconds: nil, loadError: Self.describe(error), results: [])
         }
         let loadSeconds = GenerationStats.seconds(ContinuousClock.now - loadStart)
         let results = await runWorkloads(cursor: cursor, sampler: sampler, onEvent: onEvent) { prompt in
@@ -320,46 +325,52 @@ extension EngineBenchmark {
         Self.release(instance)
         return BenchmarkCandidateResult(
             id: cursor.candidateID, label: candidate.label, timing: .inProcess, serverKind: nil,
-            weights: candidate.weights, memoryBeforeLoadBytes: memoryBefore, peakMemoryBytes: peak,
-            loadSeconds: loadSeconds, loadError: nil, results: results)
+            weights: candidate.weights, runMarkerNonce: cursor.nonce, memoryBeforeLoad: memoryBefore,
+            peakMemory: peak, loadSeconds: loadSeconds, loadError: nil, results: results)
     }
 
     func runWorkloads(
-        cursor: BenchmarkCursor, sampler: FootprintSampler?,
+        cursor: BenchmarkCursor, sampler: MemorySampler?,
         onEvent: @escaping @MainActor (BenchmarkEvent) -> Void, measure: BenchmarkMeasure
     ) async -> [BenchmarkWorkloadResult] {
         var results: [BenchmarkWorkloadResult] = []
         for (workloadIndex, workload) in workloads.enumerated() {
             if Task.isCancelled { break }
-            sampler?.beginWindow()
-            let outcome = await runWorkload(workload, at: workloadIndex, cursor: cursor, onEvent: onEvent,
-                                            measure: measure)
-            let result = Self.summarize(workload, outcome: outcome, peakMemoryBytes: sampler?.endWindow())
+            let outcome = await runWorkload(workload, at: workloadIndex, cursor: cursor, sampler: sampler,
+                                            onEvent: onEvent, measure: measure)
+            let result = Self.summarize(workload, outcome: outcome, peakMemory: sampler?.endWindow())
             onEvent(Self.finishedEvent(cursor.candidateID, result))
             results.append(result)
         }
         return results
     }
 
-    /// The warm-up and measured runs of one workload; stops at the first failure or cancellation.
+    /// The warm-up and measured runs of one workload; stops at the first failure or cancellation. Opens `sampler`'s
+    /// window at the first measured run, so the workload's peak memory covers the same runs as its other metrics.
     func runWorkload(
-        _ workload: BenchmarkWorkload, at workloadIndex: Int, cursor: BenchmarkCursor,
+        _ workload: BenchmarkWorkload, at workloadIndex: Int, cursor: BenchmarkCursor, sampler: MemorySampler?,
         onEvent: @MainActor (BenchmarkEvent) -> Void, measure: BenchmarkMeasure
-    ) async -> (runs: [BenchmarkRun], failure: String?) {
+    ) async -> BenchmarkOutcome {
         let maxTokens = settings.maxTokensOverride ?? workload.maxTokens
-        var runs: [BenchmarkRun] = []
+        var outcome = BenchmarkOutcome()
         for slot in 0..<(settings.warmUpRuns + settings.measuredRuns) {
-            if Task.isCancelled { return (runs, Self.cancelledMessage) }
+            if Task.isCancelled {
+                outcome.failure = Self.cancelledMessage
+                return outcome
+            }
+            let isWarmUp = slot < settings.warmUpRuns
+            if slot == settings.warmUpRuns { sampler?.beginWindow() }
             onEvent(progressEvent(cursor, workload: workload, at: workloadIndex, slot: slot))
             do {
                 let run = try await measure(
                     BenchmarkPrompt.make(for: workload, slot: slot, nonce: cursor.nonce, maxTokens: maxTokens))
-                if slot >= settings.warmUpRuns { runs.append(run) }
+                if isWarmUp { outcome.warmUpRuns.append(run) } else { outcome.runs.append(run) }
             } catch {
-                return (runs, Self.describe(error))
+                outcome.failure = Self.describe(error)
+                return outcome
             }
         }
-        return (runs, nil)
+        return outcome
     }
 
     func progressEvent(
@@ -387,6 +398,13 @@ extension EngineBenchmark {
 
 // MARK: - Helpers
 
+/// One workload's runs as they finished, before they are summarized.
+struct BenchmarkOutcome {
+    var warmUpRuns: [BenchmarkRun] = []
+    var runs: [BenchmarkRun] = []
+    var failure: String?
+}
+
 /// The candidate a run belongs to, carried through the per-workload calls.
 struct BenchmarkCursor {
     let candidateID: String
@@ -406,10 +424,10 @@ extension EngineBenchmark {
     }
 
     static func summarize(
-        _ workload: BenchmarkWorkload, outcome: (runs: [BenchmarkRun], failure: String?), peakMemoryBytes: Int?
+        _ workload: BenchmarkWorkload, outcome: BenchmarkOutcome, peakMemory: BenchmarkMemory?
     ) -> BenchmarkWorkloadResult {
-        BenchmarkWorkloadResult(workloadID: workload.id, runs: outcome.runs, peakMemoryBytes: peakMemoryBytes,
-                                failure: outcome.failure)
+        BenchmarkWorkloadResult(workloadID: workload.id, runs: outcome.runs, warmUpRuns: outcome.warmUpRuns,
+                                peakMemory: peakMemory, failure: outcome.failure)
     }
 
     static func finishedEvent(_ candidateID: String, _ result: BenchmarkWorkloadResult) -> BenchmarkEvent {

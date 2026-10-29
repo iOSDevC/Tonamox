@@ -50,7 +50,7 @@ public enum RemoteEvent: Sendable {
     /// An incremental text delta.
     case token(String)
     /// An incremental reasoning ("thinking") delta that the server streams apart from the answer. It is not part of
-    /// the reply; the escalation path ignores it.
+    /// the reply: the escalation path leaves it out of the answer and only notes that output was billed.
     case reasoning(String)
     /// Final (or cumulative) token accounting, when the provider reports it.
     case usage(TokenUsage)

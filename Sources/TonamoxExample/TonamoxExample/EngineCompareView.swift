@@ -145,8 +145,9 @@ struct EngineCompareView: View {
         } header: {
             Text("Workloads")
         } footer: {
-            Text("Each workload gets one warm-up run that is not counted, then the measured runs. At temperature 0 "
-                 + "each output is compared with the first engine that produced one; at 0.7 outputs are not compared.")
+            Text("Each workload gets one warm-up run, left out of the results but used for the cold start, then the "
+                 + "measured runs. At temperature 0 each output is compared with the first engine that produced one; "
+                 + "at 0.7 outputs are not compared.")
         }
         .disabled(comparison.isRunning)
     }
@@ -183,7 +184,8 @@ struct EngineCompareView: View {
             Text("Engines run one at a time. A model in this app is loaded for its turn and released after it, and "
                  + "the app's other loaded models are unloaded before the run. Every prompt starts with a fresh run "
                  + "marker, so a prompt cache can't reuse an earlier run. Cancel stops the run in progress and keeps "
-                 + "what finished; a model that is loading finishes loading first.")
+                 + "what finished. It also cancels a model's load: a load that can't stop partway finishes, and the "
+                 + "model is released without running.")
         }
     }
 
@@ -208,8 +210,29 @@ struct EngineCompareView: View {
                 }
             }
         }
+        coldStartSection(report)
         ForEach(report.workloads) { workload in
             workloadResults(workload, in: report)
+        }
+    }
+
+    @ViewBuilder
+    private func coldStartSection(_ report: BenchmarkReport) -> some View {
+        let started = report.candidates.filter { $0.coldTimeToFirstToken != nil }
+        if !started.isEmpty {
+            Section {
+                ForEach(started) { candidate in
+                    LabeledContent(candidate.label) {
+                        Text(Self.coldStartText(candidate)).font(.caption.monospaced())
+                    }
+                    .font(.caption)
+                }
+            } header: {
+                Text("Cold start to first token")
+            } footer: {
+                Text("From the start of the load to the first token of the warm-up run, the first run after it. A "
+                     + "server's includes loading the model only if the server had not loaded it yet.")
+            }
         }
     }
 
@@ -262,6 +285,8 @@ struct EngineCompareView: View {
         // Decode counts are exact unless estimated; prompt counts only when the runtime reports them.
         let approxOutput = provenance == .estimated ? "≈" : ""
         let approxPrompt = provenance == .runtime ? "" : "≈"
+        let approxPrefill = candidate.hasExactPrefill(in: result.workloadID) ? "" : "≈"
+        let before = candidate.memoryBeforeLoad
         return VStack(alignment: .leading, spacing: 6) {
             Text(candidate.label).font(.subheadline.weight(.semibold))
             if let weights = Self.weightsText(candidate) {
@@ -285,14 +310,18 @@ struct EngineCompareView: View {
                            detail: Self.range(result.timeToFirstToken, format: "%.2f"),
                            highlighted: isFastestFirstToken)
                     metric("Prefill",
-                           Self.medianText(result.prefillTokensPerSecond, format: "\(approxPrompt)%.0f tok/s"))
+                           Self.medianText(result.prefillTokensPerSecond, format: "\(approxPrefill)%.0f tok/s"))
                     metric("Decode",
                            Self.medianText(result.decodeTokensPerSecond, format: "\(approxOutput)%.1f tok/s"),
                            detail: Self.range(result.decodeTokensPerSecond, format: "%.1f"),
                            highlighted: isFastestDecode)
                     metric("Tokens", Self.tokensText(result, approx: approxPrompt))
-                    metric("Peak memory", Self.memoryText(result.peakMemoryBytes),
-                           detail: Self.memoryDetail(candidate, peak: result.peakMemoryBytes))
+                    metric("Footprint", Self.memoryText(result.peakMemory?.footprintBytes),
+                           detail: Self.memoryDetail(candidate, peak: result.peakMemory?.footprintBytes,
+                                                     before: before?.footprintBytes))
+                    metric("Resident", Self.memoryText(result.peakMemory?.residentBytes),
+                           detail: Self.memoryDetail(candidate, peak: result.peakMemory?.residentBytes,
+                                                     before: before?.residentBytes))
                     // The footer names the temperature; the full label wraps badly in a grid cell.
                     metric("Output match", result.agreement == .notApplicable ? "n/a" : result.agreement.label)
                 }
@@ -330,10 +359,15 @@ struct EngineCompareView: View {
     private var aboutSection: some View {
         Section("About these numbers") {
             Text("They hold for this device, what else it is running and these prompts; run again before reading "
-                 + "much into small gaps. Servers are timed from this app, so their time to first token includes "
-                 + "the HTTP round trip and any queueing, and their prefill speed is prompt tokens ÷ that time. "
-                 + "≈ marks estimated token counts (text length ÷ 4), which are approximate. Peak memory is this "
-                 + "app's footprint, so a server, which runs in its own process, is not measured.")
+                 + "much into small gaps. Time to first token is the figure to compare across engines. Servers are "
+                 + "timed from this app, so theirs includes the HTTP round trip and any queueing. ≈ marks estimates: "
+                 + "token counts from text length ÷ 4, and prefill speeds that are prompt tokens ÷ time to first "
+                 + "token (llama.cpp in this app, and servers); only MLX times prefill itself.\n\n"
+                 + "Footprint (phys_footprint) and resident (resident_size) are this app's peaks during the measured "
+                 + "runs, with their growth over the app before the model loaded; a server runs in its own process "
+                 + "and is not measured. llama.cpp maps a GGUF file into memory, which resident counts and footprint "
+                 + "does not; MLX copies its weights into memory that footprint counts. So memory is not directly "
+                 + "comparable between the two.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -364,11 +398,18 @@ struct EngineCompareView: View {
         bytes.map { String(format: "%.1f GB", Double($0) / 1_073_741_824) } ?? "—"
     }
 
-    /// What the model added over the app's footprint before it loaded; a server's memory is not this app's.
-    private static func memoryDetail(_ candidate: BenchmarkCandidateResult, peak: Int?) -> String? {
+    /// What the model added over the app before it loaded; a server's memory is not this app's.
+    private static func memoryDetail(_ candidate: BenchmarkCandidateResult, peak: Int?, before: Int?) -> String? {
         guard candidate.timing == .inProcess else { return "server process" }
-        guard let peak, let before = candidate.memoryBeforeLoadBytes else { return nil }
-        return String(format: "+%.1f GB", Double(peak - before) / 1_073_741_824)
+        guard let peak, let before else { return nil }
+        return String(format: "%+.1f GB", Double(peak - before) / 1_073_741_824)
+    }
+
+    /// `4.3 s`, with the load and first-token parts for an in-app model.
+    private static func coldStartText(_ candidate: BenchmarkCandidateResult) -> String {
+        guard let cold = candidate.coldTimeToFirstToken else { return "—" }
+        guard let load = candidate.loadSeconds else { return String(format: "%.2f s", cold) }
+        return String(format: "%.2f s (load %.2f + first token %.2f)", cold, load, cold - load)
     }
 
     /// The weights' name when the label doesn't already show it (a server's model id), quantization and load time.

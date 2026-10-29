@@ -574,18 +574,23 @@ else, they fail to load with an error), and "this device" reports the Mac's memo
   On an iPhone the servers' default addresses are the phone itself, so usually only the in-app models are listed;
   the Simulator reaches the Mac's servers.
 - **Settings.** The three workloads (each with its estimated prompt size), measured runs (1–10, after one warm-up
-  run) and temperature 0 or 0.7.
+  run that the results leave out) and temperature 0 or 0.7.
 - **Run.** A run that includes an in-app model first unloads the app's other loaded models
   (`ModelManager.evictAll()`). On iOS the screen stays awake while it runs, since the app unloads every model in
   the background, and the sheet can't be swiped away. Progress shows `BenchmarkProgress.summary`. **Cancel** stops
-  the run and keeps the partial report; leaving the screen stops it and discards the results. A model that is
-  loading finishes loading first.
-- **Results.** One section per workload with, per engine, the median time to first token, prefill and decode tok/s
-  (the min–max of TTFT and decode under them when runs differ), prompt → generated tokens, peak memory (this app's
-  footprint and what the model added over the footprint before it loaded; not measured for servers), output match
-  and provenance (≈ marks estimated counts; server timings are taken by the app). With two or more engines,
-  **Fastest decode** and **Fastest first token** are marked. `modelsDiffer(in:)` and
-  `promptTruncationSuspects(in:)` add warnings, and engines that did not load are listed apart.
+  the run and keeps the partial report; leaving the screen stops it and discards the results. Either one also
+  cancels a model's load: a load that can't stop partway finishes, and the model is released without running.
+- **Results.** Engines that did not load are listed apart, then each engine's cold start to first token (load plus
+  the warm-up run's time to first token). Then one section per workload with, per engine, the median time to first
+  token, prefill and decode tok/s (the min–max of TTFT and decode under them when runs differ), prompt → generated
+  tokens, peak footprint (`phys_footprint`) and resident (`resident_size`) memory during the measured runs with
+  what each grew over the app before the model loaded (not measured for servers), output match and provenance
+  (server timings are taken by the app). ≈ marks estimated token counts, and prefill speeds that are prompt tokens
+  over the time to first token (everything but MLX). With two or more engines, **Fastest decode** and **Fastest
+  first token** are marked. `modelsDiffer(in:)` and `promptTruncationSuspects(in:)` add warnings. **About these
+  numbers** says that time to first token is the figure to compare across engines, and that llama.cpp's mapped
+  GGUF weights count toward resident but not footprint while MLX's count toward footprint, so memory is not
+  directly comparable between the two.
 
 ---
 

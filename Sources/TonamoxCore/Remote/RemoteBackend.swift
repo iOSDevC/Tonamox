@@ -11,7 +11,7 @@ final class RemoteBackend: InferenceBackend {
 
     /// Usage the provider reported for the last generation, even one that later failed (for the cost ledger).
     private(set) var lastUsage: TokenUsage?
-    /// True once the last generation produced text, so a failure after it still cost tokens.
+    /// True once the last generation produced text or reasoning, so a failure after it still cost tokens.
     private(set) var didReceiveOutput = false
 
     init(target: RemoteTarget, temperature: Float = 0.7) {
@@ -94,7 +94,7 @@ final class RemoteBackend: InferenceBackend {
                 full += delta
                 onToken(full)          // cumulative — Tonamox.stream() re-diffs to deltas
             case .reasoning:
-                break
+                didReceiveOutput = true
             case .usage(let usage):
                 lastUsage = usage
             }

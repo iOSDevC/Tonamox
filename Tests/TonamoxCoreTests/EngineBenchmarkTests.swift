@@ -22,7 +22,7 @@ final class EngineBenchmarkTests: XCTestCase {
     func testWorkloadResultSummarizesMeasuredRuns() throws {
         let runs = [Self.run(ttft: 0.3, decode: 1.0, generated: 11), Self.run(ttft: 0.1, decode: 2.0, generated: 11),
                     Self.run(ttft: 0.2, decode: 0.5, generated: 11, provenance: .estimated)]
-        let result = BenchmarkWorkloadResult(workloadID: "chat", runs: runs, peakMemoryBytes: nil, failure: nil)
+        let result = BenchmarkWorkloadResult(workloadID: "chat", runs: runs, peakMemory: nil, failure: nil)
         XCTAssertEqual(result.timeToFirstToken?.median, 0.2)
         XCTAssertEqual(result.decodeTokensPerSecond?.median, 10)
         XCTAssertEqual(result.decodeTokensPerSecond?.minimum, 5)
@@ -54,6 +54,28 @@ final class EngineBenchmarkTests: XCTestCase {
         XCTAssertTrue(first.allSatisfy { $0.hasPrefix("[run ") }, "the marker leads the system prompt")
         XCTAssertTrue(first.first?.hasSuffix(BenchmarkWorkload.chat.systemPrompt) ?? false)
         XCTAssertEqual(log.systemPrompts(of: "b"), first, "run n of every candidate gets the same prompt")
+    }
+
+    func testReportNamesTheRunMarkerFormatAndEachCandidatesNonce() async throws {
+        let log = BenchCallLog()
+        let provider = BenchScriptedProvider(id: "same", tokens: ["x"], log: log)
+        let candidates = (1...2).map { index in
+            BenchmarkCandidate(label: "S\(index)", weights: Self.weights, provider: provider, modelID: "m",
+                               kind: .llamaServer)
+        }
+        let report = await EngineBenchmark(candidates: candidates, workloads: [.chat],
+                                           settings: BenchmarkSettings(measuredRuns: 1)).run()
+
+        let nonces = report.candidates.map(\.runMarkerNonce)
+        XCTAssertEqual(nonces.last, try XCTUnwrap(nonces.first) + "-2")
+        let expected = nonces.flatMap { nonce in
+            (0..<2).map { slot in
+                report.runMarkerFormat.replacingOccurrences(of: "{slot}", with: "\(slot)")
+                    .replacingOccurrences(of: "{workload}", with: "chat")
+                    .replacingOccurrences(of: "{nonce}", with: nonce) + BenchmarkWorkload.chat.systemPrompt
+            }
+        }
+        XCTAssertEqual(log.systemPrompts(of: "same"), expected, "the format and nonces rebuild every system prompt")
     }
 
     func testRepeatedServerCandidateGetsItsOwnMarkers() async {
@@ -141,6 +163,34 @@ final class EngineBenchmarkTests: XCTestCase {
         XCTAssertEqual(run.timeToFirstToken, 1.5)
     }
 
+    func testWarmUpRunsAreKeptButLeftOutOfTheMetrics() async throws {
+        let report = await EngineBenchmark(
+            candidates: [Self.server("a", tokens: ["one", " two"], log: BenchCallLog(), delay: .milliseconds(5))],
+            workloads: [.chat, .code], settings: BenchmarkSettings(measuredRuns: 2, warmUpRuns: 1)
+        ).run()
+
+        let chat = try XCTUnwrap(report.result(of: "a", in: "chat"))
+        XCTAssertEqual(chat.warmUpRuns.count, 1)
+        XCTAssertEqual(chat.runs.count, 2)
+        XCTAssertEqual(chat.timeToFirstToken?.count, 2, "metrics summarize the measured runs only")
+        let candidate = try XCTUnwrap(report.candidates.first)
+        XCTAssertNil(candidate.loadSeconds)
+        XCTAssertEqual(candidate.coldTimeToFirstToken, chat.warmUpRuns.first?.timeToFirstToken,
+                       "a server's cold start is its first request's time to first token")
+        XCTAssertNil(candidate.peakMemory, "a server runs in another process")
+        XCTAssertNil(chat.peakMemory)
+    }
+
+    func testColdStartUsesTheFirstMeasuredRunWithoutWarmUp() async throws {
+        let report = await EngineBenchmark(
+            candidates: [Self.server("a", log: BenchCallLog())], workloads: [.chat],
+            settings: BenchmarkSettings(measuredRuns: 1, warmUpRuns: 0)
+        ).run()
+        let candidate = try XCTUnwrap(report.candidates.first)
+        XCTAssertEqual(candidate.results.first?.warmUpRuns, [])
+        XCTAssertEqual(candidate.coldTimeToFirstToken, candidate.results.first?.runs.first?.timeToFirstToken)
+    }
+
     func testServerRequestCarriesTheBenchmarkSettings() async throws {
         let log = BenchCallLog()
         _ = await EngineBenchmark(
@@ -201,6 +251,23 @@ final class EngineBenchmarkTests: XCTestCase {
         XCTAssertEqual(report.result(of: "ok", in: "chat")?.runs.count, 1)
     }
 
+    func testReportWithoutMeasuredRunsSaysSo() async {
+        let broken = BenchmarkCandidate(label: "broken", weights: Self.weights) { _ in
+            throw TonamoxError.modelNotLoaded
+        }
+        let failing = BenchmarkCandidate(
+            label: "fails", weights: Self.weights,
+            provider: BenchScriptedProvider(id: "fails", tokens: ["x"], failingWorkload: "chat"),
+            modelID: "m", kind: .ollama)
+        let none = await EngineBenchmark(candidates: [broken, failing], workloads: [.chat],
+                                         settings: BenchmarkSettings(measuredRuns: 1)).run()
+        XCTAssertFalse(none.hasMeasuredRuns, "every load and workload failed")
+
+        let some = await EngineBenchmark(candidates: [broken, Self.server("ok", log: BenchCallLog())],
+                                         workloads: [.chat], settings: BenchmarkSettings(measuredRuns: 1)).run()
+        XCTAssertTrue(some.hasMeasuredRuns)
+    }
+
     func testCandidatesNeverOverlap() async {
         let log = BenchCallLog()
         _ = await EngineBenchmark(
@@ -236,8 +303,52 @@ final class EngineBenchmarkTests: XCTestCase {
         XCTAssertEqual(result.runs.first?.output, "Hello world")
         XCTAssertEqual(result.runs.first?.source, .measured, "in-process runs report the engine's own stats")
         XCTAssertEqual(result.runs.first?.promptTokens, BenchScriptedBackend.stats.promptTokens)
-        XCTAssertNotNil(report.candidates.first?.peakMemoryBytes)
-        XCTAssertNotNil(report.candidates.first?.loadSeconds)
+        XCTAssertEqual(result.warmUpRuns.count, 1)
+        let first = try XCTUnwrap(report.candidates.first)
+        let loadSeconds = try XCTUnwrap(first.loadSeconds)
+        XCTAssertEqual(try XCTUnwrap(first.coldTimeToFirstToken),
+                       loadSeconds + BenchScriptedBackend.stats.timeToFirstToken, accuracy: 1e-9,
+                       "load plus the warm-up run's time to first token")
+        XCTAssertNotNil(first.memoryBeforeLoad)
+        XCTAssertNotNil(first.peakMemory)
+        XCTAssertNotNil(result.peakMemory)
+        XCTAssertFalse(first.hasExactPrefill(in: "chat"), "llama.cpp's prefill is an estimate over TTFT")
+    }
+
+    func testWorkloadPeakMemoryIsMissingWhenNoMeasuredRunStarted() async throws {
+        let log = BenchInProcessLog()
+        let failing = BenchmarkCandidate(label: "F", weights: Self.weights) { _ in
+            Tonamox(engine: TonamoxEngine(model: .dolphin3_qwen25_1_5b_gguf,
+                                          backend: BenchScriptedBackend(name: "F", log: log, failsFirst: true)))
+        }
+        let report = await EngineBenchmark(candidates: [failing], workloads: [.chat],
+                                           settings: BenchmarkSettings(measuredRuns: 1)).run()
+
+        let result = try XCTUnwrap(report.result(of: "F", in: "chat"))
+        XCTAssertNotNil(result.failure)
+        XCTAssertTrue(result.warmUpRuns.isEmpty)
+        XCTAssertNil(result.peakMemory, "the window opens at the first measured run")
+        XCTAssertNotNil(report.candidates.first?.peakMemory, "the candidate's peak covers the load and warm-up")
+        XCTAssertNil(report.candidates.first?.coldTimeToFirstToken)
+        XCTAssertFalse(report.hasMeasuredRuns)
+    }
+
+    func testMemorySamplerWindowCoversOnlyBeginToEnd() throws {
+        let sampler = MemorySampler()
+        XCTAssertNil(sampler.endWindow(), "no window is open")
+        sampler.beginWindow()
+        let window = try XCTUnwrap(sampler.endWindow())
+        XCTAssertGreaterThan(window.footprintBytes, 0)
+        XCTAssertGreaterThan(window.residentBytes, 0)
+        XCTAssertNil(sampler.endWindow(), "endWindow closes the window")
+        XCTAssertNotNil(sampler.overallPeak)
+    }
+
+    func testMemoryPeakTakesTheHigherValueOfEachFigure() {
+        let footprintHeavy = BenchmarkMemory(footprintBytes: 9, residentBytes: 1)
+        let residentHeavy = BenchmarkMemory(footprintBytes: 2, residentBytes: 8)
+        XCTAssertEqual(footprintHeavy.peak(with: residentHeavy), BenchmarkMemory(footprintBytes: 9, residentBytes: 8))
+        XCTAssertEqual(footprintHeavy.peak(with: nil), footprintHeavy)
     }
 
     func testCancellationStopsTheStreamAndReturnsAPartialReport() async throws {
@@ -294,6 +405,18 @@ final class EngineBenchmarkTests: XCTestCase {
                        .partial(commonPrefixRatio: 12.0 / 20.0), "a block cut off by the token budget")
     }
 
+    func testOutputAgreementIgnoresAnEmptyThinkBlock() {
+        XCTAssertEqual(OutputAgreement.compare("</think>\n\nHello", with: "Hello", isReference: false,
+                                               temperature: 0), .exact,
+                       "a server sends nothing for whitespace-only reasoning")
+        XCTAssertEqual(OutputAgreement.compare("<think>\n\n</think>\n\nHello", with: "Hello", isReference: false,
+                                               temperature: 0), .exact)
+        XCTAssertEqual(OutputAgreement.compare("Hello", with: "<think>\n\n</think>\n\nHello", isReference: false,
+                                               temperature: 0), .exact)
+        XCTAssertEqual(OutputAgreement.comparableText("<think>\nA\n</think>\n\nB"), "<think>A</think>B",
+                       "a block with reasoning stays")
+    }
+
     func testReportComparesEachOutputWithTheFirstCandidateThatProducedOne() async {
         let log = BenchCallLog()
         let broken = BenchmarkCandidate(label: "broken", weights: Self.weights) { _ in
@@ -325,6 +448,38 @@ final class EngineBenchmarkTests: XCTestCase {
         XCTAssertEqual(decoded, report)
         XCTAssertEqual(decoded.candidates.first?.serverKind, .llamaServer)
         XCTAssertEqual(decoded.result(of: "a", in: "chat")?.agreement, .notApplicable)
+    }
+
+    func testJSONSpellsOutAgreementAndPerRunSpeeds() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        XCTAssertEqual(String(decoding: try encoder.encode(OutputAgreement.partial(commonPrefixRatio: 0.5)),
+                              as: UTF8.self), #"{"commonPrefixRatio":0.5,"kind":"partial"}"#)
+        XCTAssertEqual(String(decoding: try encoder.encode(OutputAgreement.notApplicable), as: UTF8.self),
+                       #"{"kind":"notApplicable"}"#)
+        let decoder = JSONDecoder()
+        for agreement in [OutputAgreement.reference, .exact, .partial(commonPrefixRatio: 0.25), .notApplicable,
+                          .unavailable] {
+            XCTAssertEqual(try decoder.decode(OutputAgreement.self, from: encoder.encode(agreement)), agreement)
+        }
+
+        let run = Self.run(ttft: 0.5, decode: 2, generated: 11, prompt: 100)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoder.encode(run)) as? [String: Any])
+        XCTAssertEqual(object["decodeTokensPerSecond"] as? Double, 5)
+        XCTAssertEqual(object["prefillTokensPerSecond"] as? Double, 200)
+        XCTAssertEqual(try decoder.decode(BenchmarkRun.self, from: encoder.encode(run)), run)
+    }
+
+    func testOnlyInProcessRuntimeCountsHaveExactPrefill() {
+        let runtime = [Self.run(ttft: 1, decode: 1, generated: 2)]
+        let mlx = BenchmarkCandidateResult(
+            id: "mlx", label: "mlx", timing: .inProcess, serverKind: nil, weights: Self.weights, runMarkerNonce: "n",
+            memoryBeforeLoad: nil, peakMemory: nil, loadSeconds: 1, loadError: nil,
+            results: [BenchmarkWorkloadResult(workloadID: "chat", runs: runtime, peakMemory: nil, failure: nil)])
+        XCTAssertTrue(mlx.hasExactPrefill(in: "chat"))
+        XCTAssertFalse(Self.candidate("server", weights: Self.weights, runs: runtime).hasExactPrefill(in: "chat"),
+                       "a server's prefill is over the client-side time to first token")
+        XCTAssertFalse(mlx.hasExactPrefill(in: "code"))
     }
 
     func testFastestAndModelMismatchHelpers() {
@@ -442,9 +597,9 @@ extension EngineBenchmarkTests {
         _ id: String, weights: BenchmarkModelIdentity, runs: [BenchmarkRun]
     ) -> BenchmarkCandidateResult {
         BenchmarkCandidateResult(
-            id: id, label: id, timing: .clientSide, serverKind: .ollama, weights: weights,
-            memoryBeforeLoadBytes: nil, peakMemoryBytes: nil, loadSeconds: nil, loadError: nil,
-            results: [BenchmarkWorkloadResult(workloadID: "chat", runs: runs, peakMemoryBytes: nil, failure: nil)])
+            id: id, label: id, timing: .clientSide, serverKind: .ollama, weights: weights, runMarkerNonce: "n",
+            memoryBeforeLoad: nil, peakMemory: nil, loadSeconds: nil, loadError: nil,
+            results: [BenchmarkWorkloadResult(workloadID: "chat", runs: runs, peakMemory: nil, failure: nil)])
     }
 
     static func report(_ candidates: [BenchmarkCandidateResult]) -> BenchmarkReport {
@@ -546,25 +701,32 @@ final class BenchInProcessLog {
     var entries: [String] = []
 }
 
-/// Streams "Hello world" in two pieces and reports fixed stats, logging generations and unloads.
+/// Streams "Hello world" in two pieces and reports fixed stats, logging generations and unloads; with `failsFirst`
+/// the first generation throws.
 @MainActor
 final class BenchScriptedBackend: InferenceBackend {
     static let stats = GenerationStats(backend: .llamaCpp, source: .measured, promptTokens: 40, generatedTokens: 2,
                                        promptTime: 0.1, timeToFirstToken: 0.1, decodeTime: 0.05)
     let name: String
     let log: BenchInProcessLog
+    private var failsNext: Bool
     private(set) var lastGenerationStats: GenerationStats?
     var isLoaded: Bool { true }
 
-    init(name: String, log: BenchInProcessLog) {
+    init(name: String, log: BenchInProcessLog, failsFirst: Bool = false) {
         self.name = name
         self.log = log
+        self.failsNext = failsFirst
     }
 
     func load(onProgress: @escaping @MainActor (String) -> Void) async throws {}
     func generate(prompt: String, systemPrompt: String?, maxTokens: Int,
                   onToken: @escaping @MainActor (String) -> Void) async throws -> String {
         log.entries.append("generate \(name)")
+        if failsNext {
+            failsNext = false
+            throw TonamoxError.modelNotLoaded
+        }
         onToken("Hello")
         onToken("Hello world")
         lastGenerationStats = Self.stats

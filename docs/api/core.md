@@ -385,24 +385,38 @@ print(report.fastestDecode(in: "chat")?.label ?? "no result", report.modelsDiffe
 - **Fairness.** Candidates never overlap. An in-process model is released with `ModelManager.release(_:)` after its
   last run, before the next candidate loads. `.inProcess(_:)` never reuses or releases an instance the app holds,
   though `ModelManager` may evict the app's models to make room, as for any load. Each workload runs
-  `warmUpRuns` discarded runs (default 1), then `measuredRuns` (default 3). Every run's system prompt starts with a
-  run marker unique among the candidate's runs and shared by the same run of every candidate, so outputs stay
+  `warmUpRuns` warm-up runs (default 1), kept in `BenchmarkWorkloadResult.warmUpRuns` but left out of its metrics,
+  then `measuredRuns` (default 3). Every run's system prompt starts with a run marker
+  (`BenchmarkReport.runMarkerFormat`, `[run {slot} {workload} {nonce}]` and a newline, with the candidate's
+  `runMarkerNonce`) unique among the candidate's runs and shared by the same run of every candidate, so outputs stay
   comparable and prompt caches share at most the chat template's opening. Every candidate gets the same prompts,
   temperature and token budget (`maxTokensOverride` replaces the workloads' own).
-- **Results.** `BenchmarkReport` → `BenchmarkCandidateResult` (`loadSeconds`, a download included; `loadError`;
-  peak `phys_footprint`) →
-  `BenchmarkWorkloadResult` (`BenchmarkMetric` median / minimum / maximum of time to first token, prefill and decode
-  tok/s and token counts; `source`, the least exact provenance; `failure`; `agreement`) → `BenchmarkRun`.
-  In-process runs report `lastGenerationStats`. Server runs are timed client-side (`BenchmarkTiming.clientSide`):
-  first non-empty delta, then the last, reasoning deltas (`RemoteEvent.reasoning`) included; counts come from the
-  server's usage (`.runtime`) or from text length (`.estimated`). A server run's `output` starts with its reasoning
-  inside `<think>…</think>`, as an in-process engine streams it. `OutputAgreement` compares each first measured
-  output with the first candidate that produced one, ignoring whitespace around the `<think>` tags: `.exact`,
-  `.partial(commonPrefixRatio:)`, or `.notApplicable` above temperature 0. `promptTruncationSuspects(in:)` lists
-  candidates whose exact (`.runtime`) prompt count is under 70 % of the largest exact one.
+- **Results.** `BenchmarkReport` (`hasMeasuredRuns`) → `BenchmarkCandidateResult` (`loadSeconds`, a download
+  included; `coldTimeToFirstToken`, `loadSeconds` plus the first run's time to first token, or for a server that
+  first run's alone; `loadError`; `memoryBeforeLoad` and `peakMemory`) → `BenchmarkWorkloadResult` (`BenchmarkMetric`
+  median / minimum / maximum of the measured runs' time to first token, prefill and decode tok/s and token counts;
+  `warmUpRuns`; `source`, the least exact provenance; `peakMemory` during the measured runs; `failure`;
+  `agreement`) → `BenchmarkRun`. In-process runs report `lastGenerationStats`. Server runs are timed client-side
+  (`BenchmarkTiming.clientSide`): first non-empty delta, then the last, reasoning deltas (`RemoteEvent.reasoning`)
+  included; counts come from the server's usage (`.runtime`) or from text length (`.estimated`). A server run's
+  `output` starts with its reasoning inside `<think>…</think>`, as an in-process engine streams it.
+  `OutputAgreement` compares each first measured output with the first candidate that produced one, ignoring
+  whitespace around the `<think>` tags and an empty block: `.exact`, `.partial(commonPrefixRatio:)`, or
+  `.notApplicable` above temperature 0. `promptTruncationSuspects(in:)` lists candidates whose exact (`.runtime`)
+  prompt count is under 70 % of the largest exact one.
+- **Comparing engines.** Time to first token is the cross-engine figure. `hasExactPrefill(in:)` is `true` only for
+  an in-process MLX model, which times prefill itself; elsewhere prefill tok/s is prompt tokens over the time to
+  first token (llama.cpp in process: an estimated count; servers: client-side, HTTP included). `BenchmarkMemory`
+  holds `footprintBytes` (`phys_footprint`) and `residentBytes` (`resident_size`) of this process, servers not
+  measured: llama.cpp maps the GGUF file, whose pages count toward resident but not footprint, while MLX copies its
+  weights into memory that footprint counts, so neither figure alone compares the two engines.
+- **JSON.** The report is `Codable`. `OutputAgreement` encodes as `{"kind": "partial", "commonPrefixRatio": 0.82}`
+  (`kind`: `reference`, `exact`, `partial`, `notApplicable`, `unavailable`), and a `BenchmarkRun` also encodes its
+  `decodeTokensPerSecond` and `prefillTokensPerSecond`, which decoding recomputes.
 - **Failures and cancellation.** `run` never throws: a failed load or run is stored in the report and the next
   workload or candidate goes on. Cancelling the task stops the stream in flight and returns the partial report with
-  `wasCancelled`.
+  `wasCancelled`. It also cancels an in-process model's load: a download stops, while a load that cannot stop
+  partway finishes and the model is released without running.
 
 ---
 
@@ -1587,8 +1601,8 @@ public final class HybridEscalator {
         redactPII: Bool = false
     ) -> EscalationPayload
     // Sends a payload exactly as built, without recompressing or redacting; an earlier request with the same
-    // provider, model, messages and maxTokens is answered from ResponseCache.shared. Records cost. Checks no
-    // policy, consent or cap.
+    // provider, model, messages and maxTokens is answered from ResponseCache.shared. An empty or
+    // whitespace-only answer is returned but not cached. Records cost. Checks no policy, consent or cap.
     func escalate(
         _ payload: EscalationPayload,
         to target: RemoteTarget,
@@ -1702,7 +1716,8 @@ public protocol RemoteLLMProvider: Sendable { /* id, displayName, retentionNote,
 public enum RemoteEvent: Sendable {
     case token(String)       // an answer delta
     case reasoning(String)   // a reasoning delta streamed apart from the answer (OpenAICompatibleProvider reads
-                             // `reasoning_content` or `reasoning`); the escalation path ignores it
+                             // `reasoning_content` or `reasoning`); escalation leaves it out of the answer but
+                             // records the call's cost if the stream then fails
     case usage(TokenUsage)
 }
 
@@ -1887,7 +1902,8 @@ Also available: `ContextCompressor` (token-saving compression), `PIIRedactor`,
 - Only `routeAndEscalate` applies the cap. `escalate(to:)` sends without checking it.
 - `ResponseCache.shared` is in memory only (64 entries by default, cleared on relaunch). `HybridEscalator`
   keys it on the provider, the model and the whole payload: system prompt, user message (compressed
-  context plus question) and `maxTokens`. `lookup`/`insert` with `prompt:` key on that string alone.
+  context plus question) and `maxTokens`, and does not cache an empty or whitespace-only answer.
+  `lookup`/`insert` with `prompt:` key on that string alone.
 - `PIIRedactor` is pattern-based (emails, `sk-…`/`pk_…`/`rk-…` keys, bearer tokens, Slack and GitHub
   tokens, AWS access key IDs) and covers the context and the question only. The system prompt is
   sent verbatim on every path.

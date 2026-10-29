@@ -237,35 +237,56 @@ tonamox bench --mlx qwen3_4b --all-servers --workload long --json > bench.json
 
 - **Engines.** `--gguf` takes a `.gguf` path or URL, or a GGUF catalog id; `--mlx` a catalog MLX model (id or
   repo id; not a local folder). A catalog model that is not on disk is downloaded first: the runs' timings leave
-  the download out, but `loadSeconds` in `--json` includes it. `--server` probes the server's default local
-  address and, without `:<model>`, takes its first model that runs on this machine (Ollama cloud tags are skipped).
-  `--all-servers` adds every running server that way. A requested server that is not running, or does not list the
-  model, is skipped with a note on stderr.
+  the download out, but the load time (`loadSeconds` in `--json`) and the cold start include it. `--server` probes
+  the server's default local address and, without `:<model>`, takes its first model that runs on this machine
+  (Ollama cloud tags are skipped). `--all-servers` adds every running server that way. A requested server that is
+  not running, or does not list the model, is skipped with a note on stderr.
 - **Workloads.** `chat` (128 tokens), `code` (256) and `long`: a summary of a generated document of about 3,200
   tokens (UTF-8 bytes ÷ 4) with no repeated sentences, which the model is asked to put in its own words.
   `--max-tokens` replaces each workload's budget.
 - **Runs.** Engines run one after another, never at the same time. An in-process model is loaded for its own turn
-  and released before the next engine starts. Each workload gets one discarded warm-up run, then `--runs`
-  measured runs (default 3), at `--temperature` (default 0) for every engine. Every run's system prompt starts with
-  a run marker, so a prompt cache shares at most the chat template's opening with an earlier run.
+  and released before the next engine starts. Each workload gets one warm-up run, left out of the table's figures
+  (`--json` keeps it), then `--runs` measured runs (default 3), at `--temperature` (default 0) for every engine.
+  Every run's system prompt starts with a run marker, so a prompt cache shares at most the chat template's opening
+  with an earlier run.
 - **Table.** One per workload: median time to first token and decode tok/s (with the min–max range when runs
-  differ), median prefill tok/s, generated tokens, provenance, peak memory and output match. Then the fastest
-  decode and time to first token, and a note when the engines ran different models or quantizations, or Tonamox
-  cannot confirm they match.
+  differ), median prefill tok/s, generated tokens, provenance, peak memory (`FOOTPRINT`, `RESIDENT`) and output
+  match. Then the fastest decode and time to first token, and a note when the engines ran different models or
+  quantizations, or Tonamox cannot confirm they match. After the tables, each engine's cold start and a legend.
   - **Server timings** are taken by `tonamox`: from the request to the first non-empty delta, then to the last,
     counting reasoning deltas (`reasoning_content` or `reasoning`) like answer deltas. Token counts come from the
     usage the server reports (`runtime`), or are estimated from text length (`estimated`). In-process runs report
     `Tonamox.lastGenerationStats`.
-  - **Memory** is the peak `phys_footprint` of the `tonamox` process during that workload's runs of an
-    in-process engine; a server runs in its own process and is not measured.
+  - **Time to first token** is the figure to compare across engines. Prefill tok/s is prompt tokens over prefill
+    time, and only MLX times prefill itself; `≈` marks the others, whose prefill is prompt tokens over the time to
+    first token: llama.cpp in process (with an estimated prompt count) and servers (timed by `tonamox`, HTTP
+    included). Nothing is ranked by prefill.
+  - **Memory** of an in-process engine is the `tonamox` process's peak `phys_footprint` (`FOOTPRINT`) and
+    `resident_size` (`RESIDENT`) during that workload's measured runs, each with its growth over the process before
+    the model loaded, e.g. `3.21 GB (+2.60)`. llama.cpp maps the GGUF file into memory: those pages count toward
+    `RESIDENT`, not `FOOTPRINT`. MLX copies its weights into memory that `FOOTPRINT` counts. So memory is not
+    directly comparable between the two engines. A server runs in its own process and is not measured.
+  - **Cold start** is the load time plus the warm-up run's time to first token: the wait from a cold start to the
+    first token. A server's is its first request's time to first token, which includes loading the model only if
+    the server had not loaded it yet.
   - **Output match** compares each engine's first measured output with the first engine's at temperature 0
     (exact, or the shared prefix in %); it is `n/a` above 0. A server's reasoning is compared as the
-    `<think>…</think>` block an in-process engine streams, with the whitespace around the tags ignored. A note also
-    flags an engine that reported far fewer prompt tokens than the others, which usually means the server cut the
-    prompt to fit its context (Ollama's `num_ctx`).
-- **Output and exit.** `--json` prints the whole report, outputs and prompts included. Progress goes to stderr.
-  Usage errors exit 2, and so does a run with no engine left to benchmark; a failed load or run is reported below the
-  table and the exit status stays 0.
+    `<think>…</think>` block an in-process engine streams, with the whitespace around the tags ignored, and an empty
+    block counts as no reasoning (llama.cpp's server sends none for it). A note also flags an engine that reported
+    far fewer prompt tokens than the others, which usually means the server cut the prompt to fit its context
+    (Ollama's `num_ctx`).
+- **JSON.** `--json` prints the whole report: the workloads' prompts and `runMarkerFormat`, the marker and newline
+  before every system prompt, `[run {slot} {workload} {nonce}]` (`{slot}` counts a workload's runs from 0, warm-up
+  first), with each engine's `runMarkerNonce`. Per engine: `loadSeconds`, `coldTimeToFirstToken`,
+  `memoryBeforeLoad` and `peakMemory` (`footprintBytes`, `residentBytes`). Per workload: the `warmUpRuns` and
+  measured `runs` with their outputs, the summaries of the measured runs, and `agreement`, e.g.
+  `{"kind": "partial", "commonPrefixRatio": 0.82}` (`kind` is `reference`, `exact`, `partial`, `notApplicable` or
+  `unavailable`). Each run carries `decodeTokensPerSecond`, (`generatedTokens` − 1) ÷ `decodeTime`, and
+  `prefillTokensPerSecond`, `promptTokens` ÷ `promptTime`, when they exist.
+- **Exit status.** Progress goes to stderr. `0` when at least one engine produced a measured run; `1` when none did
+  (every engine failed to load, or every workload failed), with the failures reported below the table; `2` for
+  usage errors, among them a `--gguf` path with no file and a run with no engine left to benchmark; `130` after
+  Ctrl-C, which stops the run and still prints the partial report (a second Ctrl-C quits at once).
 
 ## Homebrew
 

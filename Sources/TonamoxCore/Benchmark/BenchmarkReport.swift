@@ -9,11 +9,20 @@ public struct BenchmarkReport: Codable, Sendable, Hashable {
     public let settings: BenchmarkSettings
     /// The workloads every candidate ran, prompts included, so a report says exactly what was asked.
     public let workloads: [BenchmarkWorkload]
+    /// The marker every run's system prompt starts with, before the workload's own: `{slot}` counts a workload's runs
+    /// from 0, warm-up runs first, `{workload}` is the workload id and `{nonce}` the candidate's
+    /// ``BenchmarkCandidateResult/runMarkerNonce``.
+    public let runMarkerFormat: String
     public let candidates: [BenchmarkCandidateResult]
     public let startedAt: Date
     public let finishedAt: Date
     /// `true` when the task running the benchmark was cancelled; later candidates and workloads are missing.
     public let wasCancelled: Bool
+
+    /// `true` when at least one candidate has a measured run.
+    public var hasMeasuredRuns: Bool {
+        candidates.contains { candidate in candidate.results.contains { !$0.runs.isEmpty } }
+    }
 
     /// The candidate's result for one workload; `nil` when it did not run it.
     public func result(of candidateID: String, in workloadID: String) -> BenchmarkWorkloadResult? {
@@ -79,7 +88,8 @@ public struct BenchmarkReport: Codable, Sendable, Hashable {
                     isReference: index == reference, temperature: settings.temperature)
             }
         }
-        return BenchmarkReport(settings: settings, workloads: workloads, candidates: compared,
+        return BenchmarkReport(settings: settings, workloads: workloads,
+                               runMarkerFormat: BenchmarkPrompt.runMarkerFormat, candidates: compared,
                                startedAt: startedAt, finishedAt: Date(), wasCancelled: wasCancelled)
     }
 }
@@ -95,6 +105,39 @@ public enum BenchmarkTiming: String, Codable, Sendable, Hashable {
     case clientSide
 }
 
+// MARK: - BenchmarkMemory
+
+/// One reading of this process's memory, or the peak of each figure over a stretch of readings.
+///
+/// The two figures count a model's weights differently, so neither compares llama.cpp with MLX on its own:
+/// llama.cpp maps a GGUF file into memory, and its clean file-backed pages count toward ``residentBytes`` but not
+/// ``footprintBytes``; MLX copies its weights into memory that ``footprintBytes`` counts.
+public struct BenchmarkMemory: Codable, Sendable, Hashable {
+    /// `phys_footprint`: what iOS counts toward an app's memory limit.
+    public let footprintBytes: Int
+    /// `resident_size`: the process's pages in RAM, clean file-backed and shared ones included.
+    public let residentBytes: Int
+
+    public init(footprintBytes: Int, residentBytes: Int) {
+        self.footprintBytes = footprintBytes
+        self.residentBytes = residentBytes
+    }
+
+    /// This process now; `nil` when the kernel does not report it.
+    static func current() -> BenchmarkMemory? {
+        HardwareProfile.processMemoryBytes().map {
+            BenchmarkMemory(footprintBytes: $0.footprint, residentBytes: $0.resident)
+        }
+    }
+
+    /// The higher value of each figure; the two peaks may come from different readings.
+    func peak(with other: BenchmarkMemory?) -> BenchmarkMemory {
+        guard let other else { return self }
+        return BenchmarkMemory(footprintBytes: max(footprintBytes, other.footprintBytes),
+                               residentBytes: max(residentBytes, other.residentBytes))
+    }
+}
+
 // MARK: - BenchmarkCandidateResult
 
 /// One candidate's results across the workloads.
@@ -106,53 +149,96 @@ public struct BenchmarkCandidateResult: Codable, Sendable, Hashable, Identifiabl
     /// The server's kind; `nil` for an in-process model.
     public let serverKind: LocalProviderKind?
     public let weights: BenchmarkModelIdentity
-    /// This process's `phys_footprint` before the model loaded; `nil` for servers, which run in another process.
-    public let memoryBeforeLoadBytes: Int?
-    /// Peak `phys_footprint` from the load to the end of the candidate's last run; `nil` for servers. It covers the
-    /// whole process, so subtract ``memoryBeforeLoadBytes`` for the model's share.
-    public let peakMemoryBytes: Int?
+    /// The `{nonce}` of this candidate's run markers (``BenchmarkReport/runMarkerFormat``): shared by every
+    /// candidate, with `-2`, `-3`… appended for a server and model already benchmarked.
+    public let runMarkerNonce: String
+    /// This process's memory before the model loaded; `nil` for servers, which run in another process.
+    public let memoryBeforeLoad: BenchmarkMemory?
+    /// Peak memory from the load to the end of the candidate's last run, warm-up runs included; `nil` for servers.
+    /// It covers the whole process: compare it with ``memoryBeforeLoad`` for the model's share.
+    public let peakMemory: BenchmarkMemory?
     /// Load time of an in-process model, download included when the weights were not on disk; `nil` for servers.
     public let loadSeconds: Double?
+    /// ``loadSeconds`` plus the time to first token of the candidate's first run (a warm-up run unless there were
+    /// none): the wait from a cold start to the first token. For a server it is that first run's time to first token,
+    /// which includes loading the model only when the server had not loaded it yet. `nil` when no run finished.
+    public let coldTimeToFirstToken: TimeInterval?
     /// Why the model did not load; no workload ran.
     public let loadError: String?
     /// One result per workload the candidate ran, in workload order.
     public internal(set) var results: [BenchmarkWorkloadResult]
 
+    init(
+        id: String, label: String, timing: BenchmarkTiming, serverKind: LocalProviderKind?,
+        weights: BenchmarkModelIdentity, runMarkerNonce: String, memoryBeforeLoad: BenchmarkMemory?,
+        peakMemory: BenchmarkMemory?, loadSeconds: Double?, loadError: String?, results: [BenchmarkWorkloadResult]
+    ) {
+        self.id = id
+        self.label = label
+        self.timing = timing
+        self.serverKind = serverKind
+        self.weights = weights
+        self.runMarkerNonce = runMarkerNonce
+        self.memoryBeforeLoad = memoryBeforeLoad
+        self.peakMemory = peakMemory
+        self.loadSeconds = loadSeconds
+        self.loadError = loadError
+        self.results = results
+        let firstRun = results.first.flatMap { $0.warmUpRuns.first ?? $0.runs.first }
+        coldTimeToFirstToken = firstRun.map { (loadSeconds ?? 0) + $0.timeToFirstToken }
+    }
+
     public func result(for workloadID: String) -> BenchmarkWorkloadResult? {
         results.first { $0.workloadID == workloadID }
+    }
+
+    /// `true` when the runtime timed prefill and counted the prompt itself: an in-process MLX model
+    /// (``GenerationStats/Provenance/runtime``). Otherwise prefill tok/s is approximate: llama.cpp in process divides
+    /// an estimated prompt count by the time to first token, and a server's is its prompt count over the
+    /// client-side time to first token, HTTP round trip included. Compare engines on time to first token.
+    public func hasExactPrefill(in workloadID: String) -> Bool {
+        timing == .inProcess && result(for: workloadID)?.source == .runtime
     }
 }
 
 // MARK: - BenchmarkWorkloadResult
 
-/// One candidate's measured runs of one workload, summarized. The warm-up run is not included.
+/// One candidate's runs of one workload. The metrics summarize the measured runs only.
 public struct BenchmarkWorkloadResult: Codable, Sendable, Hashable {
     public let workloadID: String
     public let runs: [BenchmarkRun]
+    /// The warm-up runs before ``runs``, which no metric includes. The first one carries the cold-start cost
+    /// (``BenchmarkCandidateResult/coldTimeToFirstToken``).
+    public let warmUpRuns: [BenchmarkRun]
     public let timeToFirstToken: BenchmarkMetric?
+    /// See ``BenchmarkCandidateResult/hasExactPrefill(in:)`` before comparing it across engines.
     public let prefillTokensPerSecond: BenchmarkMetric?
     public let decodeTokensPerSecond: BenchmarkMetric?
     public let generatedTokens: BenchmarkMetric?
     public let promptTokens: BenchmarkMetric?
-    /// The least exact provenance among the runs; `nil` without runs.
+    /// The least exact provenance among the measured runs; `nil` without them.
     public let source: GenerationStats.Provenance?
-    /// Peak `phys_footprint` during this workload's runs; `nil` for servers.
-    public let peakMemoryBytes: Int?
+    /// Peak memory during the measured runs; `nil` for servers, and when no measured run started.
+    public let peakMemory: BenchmarkMemory?
     /// Why the runs stopped early; the runs before the failure are kept.
     public let failure: String?
     /// The first measured output compared with the reference candidate's, filled in when the report is assembled.
     public internal(set) var agreement: OutputAgreement
 
-    init(workloadID: String, runs: [BenchmarkRun], peakMemoryBytes: Int?, failure: String?) {
+    init(
+        workloadID: String, runs: [BenchmarkRun], warmUpRuns: [BenchmarkRun] = [], peakMemory: BenchmarkMemory?,
+        failure: String?
+    ) {
         self.workloadID = workloadID
         self.runs = runs
+        self.warmUpRuns = warmUpRuns
         self.timeToFirstToken = BenchmarkMetric(runs.map(\.timeToFirstToken))
         self.prefillTokensPerSecond = BenchmarkMetric(runs.compactMap(\.prefillTokensPerSecond))
         self.decodeTokensPerSecond = BenchmarkMetric(runs.compactMap(\.decodeTokensPerSecond))
         self.generatedTokens = BenchmarkMetric(runs.map { Double($0.generatedTokens) })
         self.promptTokens = BenchmarkMetric(runs.map { Double($0.promptTokens) })
         self.source = GenerationStats.Provenance.leastExact(runs.map(\.source))
-        self.peakMemoryBytes = peakMemoryBytes
+        self.peakMemory = peakMemory
         self.failure = failure
         self.agreement = .unavailable
     }
@@ -169,7 +255,8 @@ extension GenerationStats.Provenance {
 
 // MARK: - BenchmarkRun
 
-/// One generation: timings, token counts and the text it produced.
+/// One generation: timings, token counts and the text it produced. Encoded with ``decodeTokensPerSecond`` and
+/// ``prefillTokensPerSecond`` too, which decoding recomputes.
 public struct BenchmarkRun: Codable, Sendable, Hashable {
     public let timeToFirstToken: TimeInterval
     /// Prefill time; equals ``timeToFirstToken`` unless the runtime times prefill itself (MLX).
@@ -204,6 +291,35 @@ extension BenchmarkRun {
                   decodeTime: stats.decodeTime, promptTokens: stats.promptTokens,
                   generatedTokens: stats.generatedTokens, source: stats.source, output: output)
     }
+
+    private enum RunKeys: String, CodingKey {
+        case timeToFirstToken, promptTime, decodeTime, promptTokens, generatedTokens, source, output
+        case decodeTokensPerSecond, prefillTokensPerSecond
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: RunKeys.self)
+        self.init(timeToFirstToken: try container.decode(TimeInterval.self, forKey: .timeToFirstToken),
+                  promptTime: try container.decode(TimeInterval.self, forKey: .promptTime),
+                  decodeTime: try container.decode(TimeInterval.self, forKey: .decodeTime),
+                  promptTokens: try container.decode(Int.self, forKey: .promptTokens),
+                  generatedTokens: try container.decode(Int.self, forKey: .generatedTokens),
+                  source: try container.decode(GenerationStats.Provenance.self, forKey: .source),
+                  output: try container.decode(String.self, forKey: .output))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: RunKeys.self)
+        try container.encode(timeToFirstToken, forKey: .timeToFirstToken)
+        try container.encode(promptTime, forKey: .promptTime)
+        try container.encode(decodeTime, forKey: .decodeTime)
+        try container.encode(promptTokens, forKey: .promptTokens)
+        try container.encode(generatedTokens, forKey: .generatedTokens)
+        try container.encode(source, forKey: .source)
+        try container.encode(output, forKey: .output)
+        try container.encodeIfPresent(decodeTokensPerSecond, forKey: .decodeTokensPerSecond)
+        try container.encodeIfPresent(prefillTokensPerSecond, forKey: .prefillTokensPerSecond)
+    }
 }
 
 // MARK: - BenchmarkMetric
@@ -233,7 +349,9 @@ public struct BenchmarkMetric: Codable, Sendable, Hashable {
 /// How a candidate's first measured output compares with the reference candidate's: the first candidate in the
 /// report that produced output for the workload. Only meaningful at temperature 0, and only as far as the engines ran
 /// the same weights. Whitespace around `<think>` and `</think>` is ignored, so a server's reasoning compares with the
-/// block an in-process engine streams.
+/// block an in-process engine streams, and an empty block counts as none.
+///
+/// Encoded as `{"kind": "partial", "commonPrefixRatio": 0.5}`; the other kinds carry no ratio.
 public enum OutputAgreement: Codable, Sendable, Hashable {
     /// This candidate is the reference.
     case reference
@@ -269,9 +387,10 @@ public enum OutputAgreement: Codable, Sendable, Hashable {
         return .partial(commonPrefixRatio: Double(shared) / Double(max(text.count, referenceText.count)))
     }
 
-    /// `output` trimmed, without whitespace around `<think>` and `</think>`, and with `<think>` added before a lone
-    /// leading `</think>` (a chat template that opens the block in the prompt), so an in-process
-    /// `<think>\nA\n</think>\n\nB` and a server's `<think>A</think>B` compare equal.
+    /// `output` trimmed, without whitespace around `<think>` and `</think>`, with `<think>` added before a lone
+    /// leading `</think>` (a chat template that opens the block in the prompt), and without an empty block, so an
+    /// in-process `<think>\nA\n</think>\n\nB` and a server's `<think>A</think>B` compare equal, as do an in-process
+    /// `</think>\n\nB` and a server's `B`.
     static func comparableText(_ output: String) -> String {
         var text = output
             .replacingOccurrences(of: #"\s*<think>\s*"#, with: "<think>", options: .regularExpression)
@@ -281,6 +400,43 @@ public enum OutputAgreement: Codable, Sendable, Hashable {
            text.range(of: "<think>").map({ $0.lowerBound > close.lowerBound }) ?? true {
             text = "<think>" + text
         }
-        return text
+        // Servers drop whitespace-only reasoning (llama.cpp's chat parser), so they never send an empty block.
+        return text.replacingOccurrences(of: "<think></think>", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension OutputAgreement {
+    private enum AgreementKeys: String, CodingKey {
+        case kind, commonPrefixRatio
+    }
+
+    private enum AgreementKind: String, Codable {
+        case reference, exact, partial, notApplicable, unavailable
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: AgreementKeys.self)
+        switch try container.decode(AgreementKind.self, forKey: .kind) {
+        case .reference: self = .reference
+        case .exact: self = .exact
+        case .partial:
+            self = .partial(commonPrefixRatio: try container.decode(Double.self, forKey: .commonPrefixRatio))
+        case .notApplicable: self = .notApplicable
+        case .unavailable: self = .unavailable
+        }
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: AgreementKeys.self)
+        switch self {
+        case .reference: try container.encode(AgreementKind.reference, forKey: .kind)
+        case .exact: try container.encode(AgreementKind.exact, forKey: .kind)
+        case .partial(let ratio):
+            try container.encode(AgreementKind.partial, forKey: .kind)
+            try container.encode(ratio, forKey: .commonPrefixRatio)
+        case .notApplicable: try container.encode(AgreementKind.notApplicable, forKey: .kind)
+        case .unavailable: try container.encode(AgreementKind.unavailable, forKey: .kind)
+        }
     }
 }

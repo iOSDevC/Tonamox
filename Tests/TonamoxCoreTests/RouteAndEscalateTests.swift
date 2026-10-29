@@ -256,6 +256,33 @@ final class RouteAndEscalateTests: XCTestCase {
         XCTAssertEqual(ledger.unpricedRecordCount, 1)
     }
 
+    func testCloudCallFailingAfterReasoningIsRecordedWithUnknownCost() async throws {
+        let ledger = CostLedger()
+        let target = RemoteTarget(provider: FailingRemoteProvider(emitsToken: false, emitsReasoning: true),
+                                  modelID: "fake", contextLength: 8192, origin: .cloud)
+        do {
+            _ = try await HybridEscalator(ledger: ledger).escalate(to: target, context: "", question: "unique \(UUID().uuidString)")
+            XCTFail("the provider fails mid-stream")
+        } catch is FailingRemoteProvider.StreamError {}
+
+        let entry = try XCTUnwrap(ledger.records.last, "reasoning tokens are billed")
+        XCTAssertNil(entry.costUSD)
+    }
+
+    func testReasoningOnlyAnswerIsNotCached() async throws {
+        let escalator = HybridEscalator(ledger: CostLedger())
+        let target = RemoteTarget(provider: ReasoningOnlyProvider(), modelID: "fake", contextLength: 8192,
+                                  origin: .localNetwork(.llamaServer))
+        let payload = escalator.preparePayload(for: target, context: "", question: "unique \(UUID().uuidString)")
+
+        let first = try await escalator.escalate(payload, to: target)
+        XCTAssertEqual(first.answer, "\n", "whitespace only")
+        XCTAssertNil(ResponseCache.shared.lookup(provider: target.provider.id, model: target.modelID,
+                                                 payload: payload))
+        let second = try await escalator.escalate(payload, to: target)
+        XCTAssertFalse(second.fromCache, "the request is sent again")
+    }
+
     func testCallFailingBeforeAnyOutputIsNotRecorded() async throws {
         let ledger = CostLedger()
         let target = RemoteTarget(provider: FailingRemoteProvider(emitsToken: false), modelID: "fake",
@@ -297,19 +324,37 @@ private struct FakeRemoteProvider: RemoteLLMProvider {
     }
 }
 
-/// Streams one token (optionally) and then fails, like a dropped connection.
+/// Streams one token and one reasoning delta (each optionally) and then fails, like a dropped connection.
 private struct FailingRemoteProvider: RemoteLLMProvider {
     struct StreamError: Error {}
     let id = "test.failing"
     let displayName = "Failing"
     let retentionNote = "test"
     let emitsToken: Bool
+    var emitsReasoning = false
 
     func stream(_ request: RemoteRequest) -> AsyncThrowingStream<RemoteEvent, Error> {
-        let emitsToken = self.emitsToken
+        let emitsToken = self.emitsToken, emitsReasoning = self.emitsReasoning
         return AsyncThrowingStream { continuation in
+            if emitsReasoning { continuation.yield(.reasoning("thinking")) }
             if emitsToken { continuation.yield(.token("partial")) }
             continuation.finish(throwing: StreamError())
+        }
+    }
+}
+
+/// Spends the whole reply on reasoning, like a model that ran out of tokens before answering.
+private struct ReasoningOnlyProvider: RemoteLLMProvider {
+    let id = "test.reasoning-only"
+    let displayName = "Reasoning only"
+    let retentionNote = "test"
+
+    func stream(_ request: RemoteRequest) -> AsyncThrowingStream<RemoteEvent, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.reasoning("Let me think about this"))
+            continuation.yield(.token("\n"))
+            continuation.yield(.usage(TokenUsage(inputTokens: 5, outputTokens: 9)))
+            continuation.finish()
         }
     }
 }

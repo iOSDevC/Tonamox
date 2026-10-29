@@ -96,7 +96,8 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
 - `LocalProviderKind` has a new case, `.magnitude`: an exhaustive `switch` over it needs a branch for it.
 - `RemoteEvent` has a new case, `.reasoning(String)`: an exhaustive `switch` over it needs a branch for it.
   `OpenAICompatibleProvider` yields a server's reasoning deltas (`reasoning_content`, or `reasoning`) as
-  `.reasoning` instead of dropping them; the escalation path still ignores them.
+  `.reasoning` instead of dropping them; the escalation path leaves them out of the answer, but a stream that
+  fails after them is recorded in the cost ledger.
 - **Behaviour change:** `LocalProviderEndpoint.defaults` also probes Magnitude
   (`http://127.0.0.1:10100/inference/v1`), so `detectAll()`, `Tonamox.detectLocalProviders()` and
   `tonamox providers` return three statuses instead of two, and `bestLocalTarget()` and `tonamox ask` fall back to
@@ -168,16 +169,21 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
 - Engine benchmark: `EngineBenchmark` runs `BenchmarkCandidate`s (an in-process `Tonamox`, or a model on a local
   llama-server, Ollama or Magnitude) one at a time through `BenchmarkWorkload`s (`chat`, `code`, `longDocument`)
   and returns a Codable `BenchmarkReport`: per workload the median, minimum and maximum time to first token,
-  prefill and decode tok/s, token counts with their provenance, peak process memory for in-process models, and
-  `OutputAgreement` with the first engine at temperature 0. Each run's system prompt starts with a run marker so
-  prompt caches cannot turn later runs into hits. Server runs time reasoning deltas like answer deltas and keep
-  them in the output inside `<think>…</think>`, so a reasoning model compares with an in-process one.
-  `BenchmarkCandidate.inProcess(_:)` loads an uncached instance, so the app's own instances are never reused or
-  released. `tonamox bench` drives it from the command line. `GenerationStats.Provenance` is now `Codable`.
+  prefill and decode tok/s of the measured runs (prefill exact only for in-process MLX, `hasExactPrefill(in:)`),
+  token counts with their provenance, peak process memory for in-process models as `BenchmarkMemory`
+  (`phys_footprint` and `resident_size`, which count llama.cpp's mapped GGUF weights differently), the warm-up runs,
+  and `OutputAgreement` with the first engine at temperature 0; per candidate the load time and
+  `coldTimeToFirstToken` (load plus the first run's time to first token). Each run's system prompt starts with a
+  run marker (`runMarkerFormat`, `runMarkerNonce`) so prompt caches cannot turn later runs into hits. Server runs
+  time reasoning deltas like answer deltas and keep them in the output inside `<think>…</think>`, so a reasoning
+  model compares with an in-process one. `BenchmarkCandidate.inProcess(_:)` loads an uncached instance, so the
+  app's own instances are never reused or released; cancelling the benchmark cancels that load too.
+  `tonamox bench` drives it from the command line: it exits 1 when no engine produced a measured run, and Ctrl-C
+  prints the partial report and exits 130. `GenerationStats.Provenance` is now `Codable`.
 - TonamoxExample: **Compare engines** in Chat's model sheet runs `EngineBenchmark` over the downloaded models and
   the models of detected local servers, with workload, run-count and temperature settings, progress and Cancel,
   and per-workload results that mark the fastest decode and time to first token and warn when the engines ran
-  different models or a server may have cut the prompt.
+  different models or a server may have cut the prompt, plus each engine's cold start.
 
 ### Changed
 
@@ -215,6 +221,9 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   stops, and `stream(_:in:)` and Apple Intelligence streams cancelling when the consumer stops.
 - Consent shows, caches and prices the exact escalation payload; redaction applies on the policy path; the cost
   cap holds at the consent gate; unknown spend is never priced as $0.
+- `HybridEscalator` no longer caches an empty or whitespace-only answer (a reasoning model that spent `maxTokens`
+  thinking), which `ResponseCache` then served for every repeat of the request; and an escalation whose stream
+  fails after reasoning deltas is recorded in the cost ledger.
 - A loaded model stays ready when another sampling load fails.
 - Two downloads of one model no longer write the same `.partial` files at once, which failed one of them with
   "`<file>.partial` doesn't exist". `ModelDownloads.download` and `downloadFolder`, `GGUFModelDownloader`, the MLX

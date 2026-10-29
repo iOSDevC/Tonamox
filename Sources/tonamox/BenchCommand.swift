@@ -11,11 +11,13 @@ extension TonamoxCLI {
                              [--workload chat|code|long|all] [--runs N] [--temperature T] [--max-tokens N] [--json]
 
         Candidates run one at a time: in-process models first (--gguf, then --mlx), then servers. Each workload gets
-        one discarded warm-up run and N measured runs (default 3) at temperature T (default 0). An in-process model is
-        loaded for its own turn and released before the next; a catalog model that is not on disk is downloaded
-        first, which the runs' timings leave out but the load time in --json (loadSeconds) includes. --server without
-        a model takes the server's first model that runs on this machine (Ollama cloud tags are skipped);
+        one warm-up run, left out of the table, and N measured runs (default 3) at temperature T (default 0). An
+        in-process model is loaded for its own turn and released before the next; a catalog model that is not on disk
+        is downloaded first, which the runs' timings leave out but the load and cold-start times include. --server
+        without a model takes the server's first model that runs on this machine (Ollama cloud tags are skipped);
         --all-servers adds every running server that way. --mlx takes catalog models only, not a local folder.
+        Ctrl-C stops the run and prints the partial report. Exit status: 0; 1 when no engine produced a measured
+        run; 2 for usage errors; 130 after Ctrl-C.
 
         """
 
@@ -24,21 +26,46 @@ extension TonamoxCLI {
             print(benchUsage, terminator: "")
             return
         }
+        let request: BenchRequest
+        let report: BenchmarkReport
         do {
-            let request = try BenchRequest(args)
+            request = try BenchRequest(args)
             let candidates = try await benchCandidates(for: request)
             let benchmark = EngineBenchmark(candidates: candidates, workloads: request.workloads,
                                             settings: request.settings)
-            let report = await benchmark.run(onEvent: printBenchEvent)
-            if request.json {
-                print(try benchJSON(report))
-            } else {
-                printBenchReport(report)
-            }
+            report = await runInterruptibly(benchmark)
         } catch let usage as CLIUsageError {
             err("tonamox bench: \(usage.message)\n" + benchUsage)
             exit(2)
         }
+        if request.json {
+            print(try benchJSON(report))
+        } else {
+            printBenchReport(report)
+        }
+        if report.wasCancelled { exit(130) }
+        guard report.hasMeasuredRuns else {
+            err("tonamox bench: no engine produced a measured run.\n")
+            exit(1)
+        }
+    }
+
+    /// Runs `benchmark`. The first Ctrl-C cancels it, so the partial report still prints; a second one quits.
+    static func runInterruptibly(_ benchmark: EngineBenchmark) async -> BenchmarkReport {
+        let work = Task { await benchmark.run(onEvent: printBenchEvent) }
+        signal(SIGINT, SIG_IGN)
+        let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        interrupt.setEventHandler {
+            let note = "\nCancelling: the report will be partial (Ctrl-C again quits).\n"
+            FileHandle.standardError.write(Data(note.utf8))
+            work.cancel()
+            signal(SIGINT, SIG_DFL)
+        }
+        interrupt.resume()
+        let report = await work.value
+        interrupt.cancel()
+        signal(SIGINT, SIG_DFL)
+        return report
     }
 
     // MARK: - Candidates
@@ -161,6 +188,8 @@ extension TonamoxCLI {
             printBenchTable(report, workload: workload)
             printBenchNotes(report, workloadID: workload.id)
         }
+        printColdStarts(report)
+        if report.hasMeasuredRuns { printBenchLegend(report) }
         if report.wasCancelled { print("\nCancelled: the report is partial.") }
     }
 
@@ -173,22 +202,35 @@ extension TonamoxCLI {
     }
 
     static let benchHeader = ["ENGINE", "MODEL", "TTFT s", "PREFILL tok/s", "DECODE tok/s", "TOKENS",
-                              "PROVENANCE", "MEMORY", "OUTPUT MATCH"]
+                              "PROVENANCE", "FOOTPRINT", "RESIDENT", "OUTPUT MATCH"]
 
     static func benchRow(_ candidate: BenchmarkCandidateResult, workloadID: String) -> [String]? {
         guard let result = candidate.result(for: workloadID), !result.runs.isEmpty else { return nil }
         let timing = candidate.timing == .clientSide ? ", client-timed" : ""
+        let prefill = metricText(result.prefillTokensPerSecond, digits: 0, range: false)
+        let approximate = result.prefillTokensPerSecond != nil && !candidate.hasExactPrefill(in: workloadID)
+        let before = candidate.memoryBeforeLoad
         return [
             candidate.id,
             modelText(candidate.weights),
             metricText(result.timeToFirstToken, digits: 2, range: true),
-            metricText(result.prefillTokensPerSecond, digits: 0, range: false),
+            approximate ? "≈" + prefill : prefill,
             metricText(result.decodeTokensPerSecond, digits: 1, range: true),
             metricText(result.generatedTokens, digits: 0, range: false),
             (result.source?.rawValue ?? "—") + timing,
-            result.peakMemoryBytes.map { "\(fixed(Double($0) / 1_073_741_824)) GB" } ?? "—",
+            memoryText(result.peakMemory?.footprintBytes, before: before?.footprintBytes),
+            memoryText(result.peakMemory?.residentBytes, before: before?.residentBytes),
             result.agreement.label,
         ]
+    }
+
+    /// The peak with its growth over the process before the model loaded, e.g. `3.21 GB (+2.60)`.
+    static func memoryText(_ peak: Int?, before: Int?) -> String {
+        guard let peak else { return "—" }
+        let total = "\(fixed(Double(peak) / 1_073_741_824)) GB"
+        guard let before else { return total }
+        let growth = Double(peak - before) / 1_073_741_824
+        return "\(total) (\(growth < 0 ? "" : "+")\(fixed(growth)))"
     }
 
     static func modelText(_ weights: BenchmarkModelIdentity) -> String {
@@ -219,6 +261,35 @@ extension TonamoxCLI {
             .map { $1.padding(toLength: widths[$0], withPad: " ", startingAt: 0) }
             .joined(separator: "  ")
             .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Load plus the first run's time to first token, for every candidate that has one.
+    static func printColdStarts(_ report: BenchmarkReport) {
+        let lines = report.candidates.compactMap { candidate -> String? in
+            guard let cold = candidate.coldTimeToFirstToken else { return nil }
+            let parts = candidate.loadSeconds.map { " (load \(fixed($0)) s + first token \(fixed(cold - $0)) s)" }
+            return "  \(candidate.id): \(fixed(cold)) s" + (parts ?? "")
+        }
+        guard !lines.isEmpty else { return }
+        print("\nCold start to first token (the warm-up run; a server's includes loading the model only if it had "
+              + "not loaded it yet):")
+        lines.forEach { print($0) }
+    }
+
+    static func printBenchLegend(_ report: BenchmarkReport) {
+        print("""
+
+            TTFT is the figure to compare across engines. ≈ PREFILL is prompt tokens over the time to first token \
+            (llama.cpp in process: an estimated count; servers: timed by tonamox, HTTP included); only MLX times \
+            prefill itself.
+            """)
+        guard report.candidates.contains(where: { $0.timing == .inProcess }) else { return }
+        print("""
+            FOOTPRINT (phys_footprint) and RESIDENT (resident_size) are the tonamox process's peaks during the \
+            measured runs, with their growth over the process before the model loaded; servers run in their own \
+            process. llama.cpp maps GGUF weights from the file: RESIDENT counts them, FOOTPRINT does not. MLX copies \
+            its weights into memory that FOOTPRINT counts. Memory is not directly comparable between the two.
+            """)
     }
 
     static func printBenchNotes(_ report: BenchmarkReport, workloadID: String) {
