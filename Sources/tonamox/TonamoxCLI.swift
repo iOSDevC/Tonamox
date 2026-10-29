@@ -21,6 +21,7 @@ struct TonamoxCLI {
             case "imagegen":         try await runImageGen(rest)
             case "models":           try await runModels(rest)
             case "receipt":          try await runReceipt(rest)
+            case "bench":            try await runBench(rest)
             case "help", "-h", "--help": printUsage()
             default:
                 err("Unknown command: \(command)\n")
@@ -267,6 +268,10 @@ struct TonamoxCLI {
                                               Receipt fields by rule and, with --model, by a local model
           tonamox receipt eval <labels.csv> [--model <id>] [--min-total 0.9]…
                                               Score both against hand-labelled receipts (macOS 26)
+          tonamox bench [--gguf <path>]... [--mlx <id>]... [--server <kind>[:<model>]]... [--all-servers]
+                   [--workload chat|code|long|all] [--runs N] [--temperature T] [--max-tokens N] [--json]
+                                              Which engine runs a model fastest here: in-process
+                                                llama.cpp / MLX vs llama-server, Ollama, Magnitude
 
         ENV (used by `ask`):
           OPENAI_API_KEY      --provider openai; else Keychain account cloud.openai

@@ -41,6 +41,8 @@ tonamox ocr <image>                    # native Vision OCR; ignores EXIF orienta
 tonamox ml <subcommand> …              # run an on-device ML tool (see below)
 tonamox models search|check|devices …  # which Hugging Face models Tonamox can run (see below)
 tonamox receipt extract|eval …          # receipt fields by rule and by a local model, scored (macOS 26; see below)
+tonamox bench [--gguf <path>]... [--mlx <id>]... [--server <kind>[:<model>]]... [--all-servers] …
+                                       # which engine runs a model fastest on this Mac (see below)
 tonamox imagegen "<prompt>" [--model schnell|dev|<repo>] [--base-model schnell|dev]
               [--lora <file.safetensors> [--lora-scale S]]... [--steps N] [--seed N]
               [--quantize 3|4|6|8] [--low-ram] [--out <dir>]   # FLUX via mflux (macOS; needs uv tool install mflux)
@@ -216,6 +218,51 @@ does when it cannot run at all (a bad CSV, a model that does not load). Status 1
 `--model` takes a catalog id (`qwen35_2b_text`, `qwen3_4b`), an `https` URL to a `.gguf` (Hugging Face or direct),
 or a local `.gguf`: any argument ending in `.gguf` that is not an `http(s)` or `file` URL is read as a path,
 relative to the current directory unless absolute. The model is loaded once for the whole run.
+
+## Engine benchmark (`tonamox bench`)
+
+Runs the same prompts through each engine you name and reports which is fastest on this Mac: Tonamox in-process
+(llama.cpp for a GGUF, MLX) and local llama-server, Ollama or Magnitude servers.
+
+```
+tonamox bench [--gguf <path | catalog id | URL>]... [--mlx <catalog id | repo id>]...
+              [--server ollama|llama-server|magnitude[:<model>]]... [--all-servers]
+              [--workload chat|code|long|all] [--runs N] [--temperature T] [--max-tokens N] [--json]
+```
+
+```sh
+tonamox bench --gguf ~/models/Qwen3-4B-Q4_K_M.gguf --server llama-server --server ollama:qwen3:4b
+tonamox bench --mlx qwen3_4b --all-servers --workload long --json > bench.json
+```
+
+- **Engines.** `--gguf` takes a `.gguf` path or URL, or a GGUF catalog id; `--mlx` a catalog MLX model (id or
+  repo id; not a local folder). A catalog model that is not on disk is downloaded first; the download is not
+  timed. `--server` probes the server's default local address and, without `:<model>`, takes its first model that
+  runs on this machine (Ollama cloud tags are skipped). `--all-servers` adds every running server that way. A
+  requested server that is not running, or does not list the model, is skipped with a note on stderr.
+- **Workloads.** `chat` (128 tokens), `code` (256) and `long`: a summary of a generated document of about 3,200
+  tokens (UTF-8 bytes ÷ 4) with no repeated sentences, which the model is asked to put in its own words.
+  `--max-tokens` replaces each workload's budget.
+- **Runs.** Engines run one after another, never at the same time. An in-process model is loaded for its own turn
+  and released before the next engine starts. Each workload gets one discarded warm-up run, then `--runs`
+  measured runs (default 3), at `--temperature` (default 0) for every engine. Every run's system prompt starts with
+  a run marker, so a prompt cache shares at most the chat template's opening with an earlier run.
+- **Table.** One per workload: median time to first token, prefill and decode tok/s (with the min–max range when
+  runs differ), generated tokens, provenance, peak memory and output match. Then the fastest decode and time to
+  first token, and a note when the engines ran different models or quantizations, or Tonamox cannot confirm they
+  match.
+  - **Server timings** are taken by `tonamox`: from the request to the first non-empty delta, then to the last.
+    Token counts come from the usage the server reports (`runtime`), or are estimated from text length
+    (`estimated`). In-process runs report `Tonamox.lastGenerationStats`.
+  - **Memory** is the peak `phys_footprint` of the `tonamox` process during that workload's runs of an
+    in-process engine; a server runs in its own process and is not measured.
+  - **Output match** compares each engine's first measured output with the first engine's at temperature 0
+    (exact, or the shared prefix in %); it is `n/a` above 0. A note also flags an engine that reported far fewer
+    prompt tokens than the others, which usually means the server cut the prompt to fit its context (Ollama's
+    `num_ctx`).
+- **Output and exit.** `--json` prints the whole report, outputs and prompts included. Progress goes to stderr.
+  Usage errors exit 2, and so does a run with no engine left to benchmark; a failed load or run is reported below the
+  table and the exit status stays 0.
 
 ## Homebrew
 

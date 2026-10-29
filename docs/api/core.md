@@ -355,6 +355,48 @@ Loaded state is queried on `ModelManager`, not on `Tonamox`:
 ModelManager.shared.isLoaded(_ model: Model) -> Bool
 ```
 
+### Engine benchmark
+
+`EngineBenchmark` runs the same workloads through several engines, one at a time, and reports which is fastest
+on this device. `tonamox bench` is its command-line front end.
+
+```swift
+let statuses = await LocalProviderDetector.detectAll()
+var candidates: [BenchmarkCandidate] = [.inProcess(.qwen3_4b)]
+if let server = statuses.first(where: \.isAvailable), let model = server.models.first(where: \.runsLocally) {
+    candidates.append(.server(server, model: model))
+}
+let benchmark = EngineBenchmark(candidates: candidates, workloads: BenchmarkWorkload.all,
+                                settings: BenchmarkSettings(measuredRuns: 3, temperature: 0))
+let report = await benchmark.run { event in
+    if case .running(let progress) = event { print(progress.summary) }  // "Ollama (2/2) · chat · run 1/3"
+}
+print(report.fastestDecode(in: "chat")?.label ?? "no result", report.modelsDiffer(in: "chat"))
+```
+
+- **Candidates.** `.inProcess(_ model:)` loads through `ModelManager.load(_:tools:temperature:topP:onProgress:)`
+  (downloading weights not on disk); `BenchmarkCandidate(label:weights:load:)` takes any loader that returns a
+  `Tonamox` for the benchmark's temperature. `.server(_:model:)` uses `OpenAICompatibleProvider.from(_:)`;
+  `BenchmarkCandidate(label:weights:provider:modelID:kind:)` takes any `RemoteLLMProvider`. `weights`
+  (`BenchmarkModelIdentity`: name, format, quantization) is what `modelsDiffer(in:)` compares.
+- **Fairness.** Candidates never overlap. An in-process model is released with `ModelManager.release(_:)` after its
+  last run, before the next candidate loads; models loaded elsewhere stay loaded. Each workload runs
+  `warmUpRuns` discarded runs (default 1), then `measuredRuns` (default 3). Every run's system prompt starts with a
+  run marker unique among the candidate's runs and shared by the same run of every candidate, so outputs stay
+  comparable and prompt caches share at most the chat template's opening. Every candidate gets the same prompts,
+  temperature and token budget (`maxTokensOverride` replaces the workloads' own).
+- **Results.** `BenchmarkReport` → `BenchmarkCandidateResult` (load time, `loadError`, peak `phys_footprint`) →
+  `BenchmarkWorkloadResult` (`BenchmarkMetric` median / minimum / maximum of time to first token, prefill and decode
+  tok/s and token counts; the least exact `provenance`; `failure`; `agreement`) → `BenchmarkRun`. In-process runs
+  report `lastGenerationStats`. Server runs are timed client-side (`BenchmarkTiming.clientSide`): first non-empty
+  delta, then the last; counts come from the server's usage (`.runtime`) or from text length (`.estimated`).
+  `OutputAgreement` compares each first measured output with the first candidate that produced one: `.exact`,
+  `.partial(commonPrefixRatio:)`, or `.notApplicable` above temperature 0. `promptTruncationSuspects(in:)` lists
+  candidates whose exact (`.runtime`) prompt count is under 70 % of the largest exact one.
+- **Failures and cancellation.** `run` never throws: a failed load or run is stored in the report and the next
+  workload or candidate goes on. Cancelling the task stops the stream in flight and returns the partial report with
+  `wasCancelled`.
+
 ---
 
 ## ModelManager

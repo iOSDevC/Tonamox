@@ -162,6 +162,13 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   access on and `OpenAICompatibleProvider(id:displayName:baseURL:apiKey:)` with its key. Magnitude is a separate app
   whose update check sends hardware information and whose `magnitude server setup` installs a self-updating
   background service.
+- Engine benchmark: `EngineBenchmark` runs `BenchmarkCandidate`s (an in-process `Tonamox`, or a model on a local
+  llama-server, Ollama or Magnitude) one at a time through `BenchmarkWorkload`s (`chat`, `code`, `longDocument`)
+  and returns a Codable `BenchmarkReport`: per workload the median, minimum and maximum time to first token,
+  prefill and decode tok/s, token counts with their provenance, peak process memory for in-process models, and
+  `OutputAgreement` with the first engine at temperature 0. Each run's system prompt starts with a run marker so
+  prompt caches cannot turn later runs into hits. `tonamox bench` drives it from the command line.
+  `GenerationStats.Provenance` is now `Codable`.
 
 ### Changed
 

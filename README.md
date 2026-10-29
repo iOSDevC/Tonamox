@@ -479,6 +479,7 @@ tonamox ml <subcommand> …              # on-device ML: classify-image, barcode
                                     # coreml-describe, coreml-predict, train-text, classify-text
 tonamox imagegen "<prompt>" [--lora <path>] …  # FLUX image generation via mflux (macOS)
 tonamox models search|check|devices …  # which Hugging Face models run here, and why not
+tonamox bench --gguf <path> --server llama-server …  # which engine runs a model fastest on this Mac
 ```
 
 `ask` sends to a running llama-server, else Ollama, else Magnitude, and never picks a cloud API on its own.
