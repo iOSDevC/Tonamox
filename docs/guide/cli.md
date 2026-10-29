@@ -87,7 +87,7 @@ tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
 - **`--max-tokens N`** caps the answer (default 512).
 
 ```sh
-tonamox ask "Summarize RFC 9110 in one sentence" > answer.txt      # your llama-server / Ollama
+tonamox ask "Summarize RFC 9110 in one sentence" > answer.txt      # your llama-server / Ollama / Magnitude
 tonamox ask "Review this function: …" --provider anthropic          # sends to Anthropic
 tonamox ask "Hello" --base-url http://192.168.1.20:8080/v1 --model qwen3-32b
 ```
@@ -236,10 +236,11 @@ tonamox bench --mlx qwen3_4b --all-servers --workload long --json > bench.json
 ```
 
 - **Engines.** `--gguf` takes a `.gguf` path or URL, or a GGUF catalog id; `--mlx` a catalog MLX model (id or
-  repo id; not a local folder). A catalog model that is not on disk is downloaded first; the download is not
-  timed. `--server` probes the server's default local address and, without `:<model>`, takes its first model that
-  runs on this machine (Ollama cloud tags are skipped). `--all-servers` adds every running server that way. A
-  requested server that is not running, or does not list the model, is skipped with a note on stderr.
+  repo id; not a local folder). A catalog model that is not on disk is downloaded first: the runs' timings leave
+  the download out, but `loadSeconds` in `--json` includes it. `--server` probes the server's default local
+  address and, without `:<model>`, takes its first model that runs on this machine (Ollama cloud tags are skipped).
+  `--all-servers` adds every running server that way. A requested server that is not running, or does not list the
+  model, is skipped with a note on stderr.
 - **Workloads.** `chat` (128 tokens), `code` (256) and `long`: a summary of a generated document of about 3,200
   tokens (UTF-8 bytes ÷ 4) with no repeated sentences, which the model is asked to put in its own words.
   `--max-tokens` replaces each workload's budget.
@@ -247,19 +248,21 @@ tonamox bench --mlx qwen3_4b --all-servers --workload long --json > bench.json
   and released before the next engine starts. Each workload gets one discarded warm-up run, then `--runs`
   measured runs (default 3), at `--temperature` (default 0) for every engine. Every run's system prompt starts with
   a run marker, so a prompt cache shares at most the chat template's opening with an earlier run.
-- **Table.** One per workload: median time to first token, prefill and decode tok/s (with the min–max range when
-  runs differ), generated tokens, provenance, peak memory and output match. Then the fastest decode and time to
-  first token, and a note when the engines ran different models or quantizations, or Tonamox cannot confirm they
-  match.
-  - **Server timings** are taken by `tonamox`: from the request to the first non-empty delta, then to the last.
-    Token counts come from the usage the server reports (`runtime`), or are estimated from text length
-    (`estimated`). In-process runs report `Tonamox.lastGenerationStats`.
+- **Table.** One per workload: median time to first token and decode tok/s (with the min–max range when runs
+  differ), median prefill tok/s, generated tokens, provenance, peak memory and output match. Then the fastest
+  decode and time to first token, and a note when the engines ran different models or quantizations, or Tonamox
+  cannot confirm they match.
+  - **Server timings** are taken by `tonamox`: from the request to the first non-empty delta, then to the last,
+    counting reasoning deltas (`reasoning_content` or `reasoning`) like answer deltas. Token counts come from the
+    usage the server reports (`runtime`), or are estimated from text length (`estimated`). In-process runs report
+    `Tonamox.lastGenerationStats`.
   - **Memory** is the peak `phys_footprint` of the `tonamox` process during that workload's runs of an
     in-process engine; a server runs in its own process and is not measured.
   - **Output match** compares each engine's first measured output with the first engine's at temperature 0
-    (exact, or the shared prefix in %); it is `n/a` above 0. A note also flags an engine that reported far fewer
-    prompt tokens than the others, which usually means the server cut the prompt to fit its context (Ollama's
-    `num_ctx`).
+    (exact, or the shared prefix in %); it is `n/a` above 0. A server's reasoning is compared as the
+    `<think>…</think>` block an in-process engine streams, with the whitespace around the tags ignored. A note also
+    flags an engine that reported far fewer prompt tokens than the others, which usually means the server cut the
+    prompt to fit its context (Ollama's `num_ctx`).
 - **Output and exit.** `--json` prints the whole report, outputs and prompts included. Progress goes to stderr.
   Usage errors exit 2, and so does a run with no engine left to benchmark; a failed load or run is reported below the
   table and the exit status stays 0.

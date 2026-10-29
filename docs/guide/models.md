@@ -577,8 +577,9 @@ else, they fail to load with an error), and "this device" reports the Mac's memo
   run) and temperature 0 or 0.7.
 - **Run.** A run that includes an in-app model first unloads the app's other loaded models
   (`ModelManager.evictAll()`). On iOS the screen stays awake while it runs, since the app unloads every model in
-  the background, and the sheet can't be swiped away. Progress shows `BenchmarkProgress.summary`. **Cancel**, or
-  leaving the screen, stops the run and keeps the partial report; a model that is loading finishes loading first.
+  the background, and the sheet can't be swiped away. Progress shows `BenchmarkProgress.summary`. **Cancel** stops
+  the run and keeps the partial report; leaving the screen stops it and discards the results. A model that is
+  loading finishes loading first.
 - **Results.** One section per workload with, per engine, the median time to first token, prefill and decode tok/s
   (the min–max of TTFT and decode under them when runs differ), prompt → generated tokens, peak memory (this app's
   footprint and what the model added over the footprint before it loaded; not measured for servers), output match

@@ -13,9 +13,9 @@ extension TonamoxCLI {
         Candidates run one at a time: in-process models first (--gguf, then --mlx), then servers. Each workload gets
         one discarded warm-up run and N measured runs (default 3) at temperature T (default 0). An in-process model is
         loaded for its own turn and released before the next; a catalog model that is not on disk is downloaded
-        first, and the download is not timed. --server without a model takes the server's first model that runs on
-        this machine (Ollama cloud tags are skipped); --all-servers adds every running server that way. --mlx takes
-        catalog models only, not a local folder.
+        first, which the runs' timings leave out but the load time in --json (loadSeconds) includes. --server without
+        a model takes the server's first model that runs on this machine (Ollama cloud tags are skipped);
+        --all-servers adds every running server that way. --mlx takes catalog models only, not a local folder.
 
         """
 
@@ -79,8 +79,10 @@ extension TonamoxCLI {
 
     static func noteDownload(_ model: Model) {
         guard !model.isDownloaded else { return }
-        err("\(model.displayName) is not on disk: it downloads before its runs (about \(model.approximateSizeMB) MB, "
-            + "not timed).\n")
+        // A model built from a URL has no catalog size.
+        let size = model.approximateSizeMB > 0 ? "about \(model.approximateSizeMB) MB" : "size unknown"
+        err("\(model.displayName) is not on disk: it downloads before its runs (\(size); the runs' timings leave "
+            + "it out, loadSeconds includes it).\n")
     }
 
     /// Requested servers that are not running, or lack the model, are skipped with a note on stderr.
@@ -183,7 +185,7 @@ extension TonamoxCLI {
             metricText(result.prefillTokensPerSecond, digits: 0, range: false),
             metricText(result.decodeTokensPerSecond, digits: 1, range: true),
             metricText(result.generatedTokens, digits: 0, range: false),
-            (result.provenance?.rawValue ?? "—") + timing,
+            (result.source?.rawValue ?? "—") + timing,
             result.peakMemoryBytes.map { "\(fixed(Double($0) / 1_073_741_824)) GB" } ?? "—",
             result.agreement.label,
         ]

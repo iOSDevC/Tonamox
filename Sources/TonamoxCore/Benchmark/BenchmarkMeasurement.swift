@@ -40,8 +40,8 @@ extension EngineBenchmark {
     }
 
     /// One streamed request to a server, timed client-side: time to first token from the request to the first
-    /// non-empty delta, decode from the first delta to the last. Counts come from the server's usage event when it
-    /// sends one, otherwise from text length.
+    /// non-empty delta, decode from the first delta to the last, reasoning deltas included in both. Counts come from
+    /// the server's usage event when it sends one, otherwise from text length.
     nonisolated static func measureServerRun(
         provider: any RemoteLLMProvider, modelID: String, prompt: BenchmarkPrompt, temperature: Float
     ) async throws -> BenchmarkRun {
@@ -54,6 +54,7 @@ extension EngineBenchmark {
             try Task.checkCancellation()
             switch event {
             case .token(let text): clock.record(text)
+            case .reasoning(let text): clock.record(text, isReasoning: true)
             case .usage(let reported): usage = reported
             }
         }
@@ -69,15 +70,22 @@ struct DeltaClock {
     private let start = ContinuousClock.now
     private var first: ContinuousClock.Instant?
     private var last: ContinuousClock.Instant?
-    private(set) var text = ""
+    private var answer = ""
+    private var thinking = ""
 
-    /// Empty deltas (role-only or finish chunks) are ignored.
-    mutating func record(_ delta: String) {
+    /// Empty deltas (role-only or finish chunks) are ignored. Reasoning deltas are timed like answer deltas: a
+    /// server's usage counts their tokens, and in-process stats time them too.
+    mutating func record(_ delta: String, isReasoning: Bool = false) {
         guard !delta.isEmpty else { return }
         let now = ContinuousClock.now
         if first == nil { first = now }
         last = now
-        text += delta
+        if isReasoning { thinking += delta } else { answer += delta }
+    }
+
+    /// The answer, after any reasoning wrapped in `<think>…</think>` as in-process engines stream it.
+    var text: String {
+        thinking.isEmpty ? answer : "<think>" + thinking + "</think>" + answer
     }
 
     /// A stream without text reports its whole duration as time to first token.
@@ -100,7 +108,7 @@ struct DeltaClock {
             timeToFirstToken: timeToFirstToken, promptTime: timeToFirstToken, decodeTime: decodeTime,
             promptTokens: usage?.inputTokens ?? GenerationStats.estimatedTokens(in: prompt.system + "\n" + prompt.user),
             generatedTokens: usage?.outputTokens ?? GenerationStats.estimatedTokens(in: output),
-            provenance: usage == nil ? .estimated : .runtime, output: output)
+            source: usage == nil ? .estimated : .runtime, output: output)
     }
 }
 

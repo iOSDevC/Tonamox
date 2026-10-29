@@ -94,6 +94,9 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   with such a model. MLX and layer-streaming keep validation only. `usesSchemaGrammar = false` restores the
   previous path.
 - `LocalProviderKind` has a new case, `.magnitude`: an exhaustive `switch` over it needs a branch for it.
+- `RemoteEvent` has a new case, `.reasoning(String)`: an exhaustive `switch` over it needs a branch for it.
+  `OpenAICompatibleProvider` yields a server's reasoning deltas (`reasoning_content`, or `reasoning`) as
+  `.reasoning` instead of dropping them; the escalation path still ignores them.
 - **Behaviour change:** `LocalProviderEndpoint.defaults` also probes Magnitude
   (`http://127.0.0.1:10100/inference/v1`), so `detectAll()`, `Tonamox.detectLocalProviders()` and
   `tonamox providers` return three statuses instead of two, and `bestLocalTarget()` and `tonamox ask` fall back to
@@ -167,8 +170,10 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   and returns a Codable `BenchmarkReport`: per workload the median, minimum and maximum time to first token,
   prefill and decode tok/s, token counts with their provenance, peak process memory for in-process models, and
   `OutputAgreement` with the first engine at temperature 0. Each run's system prompt starts with a run marker so
-  prompt caches cannot turn later runs into hits. `tonamox bench` drives it from the command line.
-  `GenerationStats.Provenance` is now `Codable`.
+  prompt caches cannot turn later runs into hits. Server runs time reasoning deltas like answer deltas and keep
+  them in the output inside `<think>…</think>`, so a reasoning model compares with an in-process one.
+  `BenchmarkCandidate.inProcess(_:)` loads an uncached instance, so the app's own instances are never reused or
+  released. `tonamox bench` drives it from the command line. `GenerationStats.Provenance` is now `Codable`.
 - TonamoxExample: **Compare engines** in Chat's model sheet runs `EngineBenchmark` over the downloaded models and
   the models of detected local servers, with workload, run-count and temperature settings, progress and Cancel,
   and per-workload results that mark the fastest decode and time to first token and warn when the engines ran

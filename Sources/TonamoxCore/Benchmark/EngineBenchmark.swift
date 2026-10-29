@@ -20,7 +20,9 @@ import MLX
 /// Fairness rules the run enforces:
 /// - Candidates run one after another, never concurrently. An in-process model is loaded for its own turn and
 ///   released (``ModelManager/release(_:)``) before the next candidate loads, so the benchmark holds one of its models
-///   at a time. Models the app loaded elsewhere stay loaded; evict them first for a clean memory reading.
+///   at a time. ``BenchmarkCandidate/inProcess(_:label:)`` loads an instance of its own, so an instance the app holds
+///   is never reused or released; ModelManager may still evict the app's models to make room, as for any load. Evict
+///   them first for a clean memory reading.
 /// - Each workload runs ``BenchmarkSettings/warmUpRuns`` discarded runs, then ``BenchmarkSettings/measuredRuns``.
 /// - Every run's system prompt starts with a run marker unique among the candidate's runs, so prompt caches (Tonamox's
 ///   GGUF and MLX prompt reuse, llama-server, Ollama, Magnitude) can share at most the chat template's opening and a
@@ -89,13 +91,15 @@ public struct BenchmarkCandidate: Sendable, Identifiable {
         self.engine = .server(provider: provider, modelID: modelID, kind: kind)
     }
 
-    /// `model` loaded through ``ModelManager/load(_:tools:temperature:topP:onProgress:)``, which downloads weights
-    /// that are not on disk yet. Labelled `Tonamox llama.cpp` or `Tonamox MLX`.
+    /// `model` loaded by ``ModelManager`` as an instance of its own: weights that are not on disk yet are downloaded
+    /// and the memory budget applies, as in ``ModelManager/load(_:tools:temperature:topP:onProgress:)``, but the
+    /// instance is never taken from or added to the cache, so the load is always timed and the app's instances are
+    /// untouched. Labelled `Tonamox llama.cpp` or `Tonamox MLX`.
     public static func inProcess(_ model: Model, label: String? = nil) -> BenchmarkCandidate {
         let engineName = model.format == .mlx ? "Tonamox MLX" : "Tonamox llama.cpp"
         return BenchmarkCandidate(label: label ?? engineName, weights: BenchmarkModelIdentity(model: model)) {
             temperature in
-            try await ModelManager.shared.load(model, temperature: temperature)
+            try await ModelManager.shared.loadUncached(model, temperature: temperature)
         }
     }
 
@@ -374,6 +378,7 @@ extension EngineBenchmark {
     /// count toward the next candidate's memory.
     static func release(_ instance: Tonamox) {
         ModelManager.shared.release(instance)
+        ModelManager.shared.settleAfterRelease(instance.model)
         #if canImport(MLX)
         if instance.model.format == .mlx { MLX.Memory.clearCache() }
         #endif

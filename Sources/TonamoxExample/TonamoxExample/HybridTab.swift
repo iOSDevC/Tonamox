@@ -88,7 +88,8 @@ struct HybridTab: View {
         } header: {
             Text("Ask a bigger model")
         } footer: {
-            Text("Local-first: prefers your own llama-server / Ollama, then cloud (if allowed and a key is set). "
+            Text("Local-first: prefers your own llama-server / Ollama / Magnitude, then cloud (if allowed and a key "
+                 + "is set). "
                  + "Context is compressed to save tokens; cloud sends redact obvious secrets by default "
                  + "and ask consent first, showing the exact payload.")
         }

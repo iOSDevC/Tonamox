@@ -253,7 +253,7 @@ model, reusing the same compression, consent, and cost machinery. Fail-closed: a
 | Area | Type(s) |
 |---|---|
 | Discovery | `LocalProviderDetector`, `LocalProviderStatus`, `LocalProviderModel` |
-| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / OpenAI), `AnthropicProvider` |
+| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / Magnitude / OpenAI), `AnthropicProvider` |
 | Transport (internal) | SSE parsing (inside the providers' `stream(_:)`) and a remote `InferenceBackend` used by `HybridEscalator.escalate(to:…)` |
 | Routing | `EscalationRouter` (R1–R7), `EscalationPolicy`, `RoutingDecision`, `AskTargetResolver` (one target for a one-shot ask) |
 | Compression | `ContextCompressor` + pluggable `SelfInfoScorer` (default `HeuristicScorer`) |
@@ -262,7 +262,7 @@ model, reusing the same compression, consent, and cost machinery. Fail-closed: a
 > **GitHub Models is retired.** GitHub shut down GitHub Models on 2026-07-30.
 > `OpenAICompatibleProvider.gitHubModels(apiKey:)` is now `unavailable` (a compile error naming the
 > replacements), `HybridEscalator.cloudTargets` no longer reads the `cloud.github-models` Keychain
-> key, and `tonamox ask` uses your own llama-server/Ollama box, or an Anthropic/OpenAI key when you
+> key, and `tonamox ask` uses your own llama-server/Ollama/Magnitude, or an Anthropic/OpenAI key when you
 > name that provider.
 
 **Privacy & cost:** cloud API keys live only in the Keychain (never in source, files,
@@ -472,7 +472,7 @@ handy as a reference and in CI. Build with `scripts/build-cli.sh` (or
 tonamox providers                      # detect Ollama / llama-server / Magnitude + models
 tonamox tools                          # list on-device ML tools by category, with availability
 tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>] [--base-url <url>]
-                                    # ask a bigger model: your llama-server/Ollama unless you name a cloud API
+                                    # ask a bigger model: your llama-server/Ollama/Magnitude unless you name a cloud API
 tonamox ocr <image>                    # extract text via native Vision OCR
 tonamox ml <subcommand> …              # on-device ML: classify-image, barcodes, faces, ocr-lines, document,
                                     # language, entities, sentiment, similarity, sounds,

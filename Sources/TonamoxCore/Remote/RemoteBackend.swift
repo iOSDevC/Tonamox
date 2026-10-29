@@ -93,6 +93,8 @@ final class RemoteBackend: InferenceBackend {
                 didReceiveOutput = true
                 full += delta
                 onToken(full)          // cumulative — Tonamox.stream() re-diffs to deltas
+            case .reasoning:
+                break
             case .usage(let usage):
                 lastUsage = usage
             }

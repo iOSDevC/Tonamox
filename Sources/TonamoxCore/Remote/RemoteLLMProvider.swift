@@ -49,6 +49,9 @@ public struct RemoteRequest: Sendable {
 public enum RemoteEvent: Sendable {
     /// An incremental text delta.
     case token(String)
+    /// An incremental reasoning ("thinking") delta that the server streams apart from the answer. It is not part of
+    /// the reply; the escalation path ignores it.
+    case reasoning(String)
     /// Final (or cumulative) token accounting, when the provider reports it.
     case usage(TokenUsage)
 }

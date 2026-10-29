@@ -65,7 +65,7 @@ struct IntegrateView: View {
                     row("CLI · ask a bigger model", "tonamox ask \"…\" [--provider openai|anthropic]")
                     row("CLI · native OCR", "tonamox ocr image.png")
                 } footer: {
-                    Text("Pin the package by revision: a version range cannot resolve while Tonamox pins LocalLLMClient by revision. The same features run headlessly via the `tonamox` CLI (build: scripts/build-cli.sh) and this app ships as a .dmg (scripts/build-app.sh). `tonamox ask` uses your llama-server / Ollama by default and a cloud API only when you name one; export OPENAI_API_KEY or ANTHROPIC_API_KEY for the CLI.")
+                    Text("Pin the package by revision: a version range cannot resolve while Tonamox pins LocalLLMClient by revision. The same features run headlessly via the `tonamox` CLI (build: scripts/build-cli.sh) and this app ships as a .dmg (scripts/build-app.sh). `tonamox ask` uses your llama-server / Ollama / Magnitude by default and a cloud API only when you name one; export OPENAI_API_KEY or ANTHROPIC_API_KEY for the CLI.")
                 }
             }
             .navigationTitle("Integrate")

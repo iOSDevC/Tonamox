@@ -196,6 +196,20 @@ public final class ModelManager: ObservableObject {
         states[model] ?? .idle
     }
 
+    /// `model` loaded for one caller: downloaded and checked against the memory budget like
+    /// ``load(_:tools:temperature:topP:onProgress:)``, but never taken from or added to the cache, so releasing it
+    /// cannot unload an instance someone else holds. Release it with ``release(_:)``, then ``settleAfterRelease(_:)``.
+    func loadUncached(_ model: Model, temperature: Float?) async throws -> Tonamox {
+        let sampling = try SamplingSettings.resolve(temperature: temperature, topP: nil, for: model)
+        return try await performLoad(model, sampling: sampling, cachesInstance: false)
+    }
+
+    /// Resets `model`'s state to `.idle` unless a cached instance of it is still loaded; an uncached load leaves it
+    /// `.ready` after its release.
+    func settleAfterRelease(_ model: Model) {
+        settle(model, otherwise: .idle)
+    }
+
     /// Release a specific instance obtained from `load`: unload its llama.cpp context, and — only if it is the
     /// SHARED cached instance for its model — drop the cache entry so the next `load` rebuilds instead of serving
     /// a torn-down zombie. A tool-enabled instance is never cached, so this just unloads it (identity check via
@@ -268,6 +282,7 @@ public final class ModelManager: ObservableObject {
         _ model: Model,
         sampling: SamplingSettings,
         tools: [any LLMTool] = [],
+        cachesInstance: Bool = true,
         onProgress: (@MainActor (String) -> Void)? = nil
     ) async throws -> Tonamox {
         if let shared = try await toolInstanceOnLoadedWeights(model, sampling: sampling, tools: tools) {
@@ -314,8 +329,8 @@ public final class ModelManager: ObservableObject {
             let instance = Tonamox(model: model, sampling: sampling, tools: tools)
             try await instance.engine.load(onProgress: engineProgress)
 
-            // Only plain (tool-less) instances are cached; tool-enabled ones are caller-owned.
-            if tools.isEmpty {
+            // Only plain (tool-less) instances are cached; tool-enabled and uncached ones are caller-owned.
+            if tools.isEmpty, cachesInstance {
                 let key = InstanceKey(base: model, sampling: sampling)
                 cache[key] = instance
                 touch(key)

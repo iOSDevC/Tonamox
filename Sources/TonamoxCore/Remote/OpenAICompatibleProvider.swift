@@ -98,7 +98,11 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
                         throw TonamoxError.remoteFailed(http.statusCode, String(body.prefix(600)))
                     }
                     let completion = try JSONDecoder().decode(Completion.self, from: data)
-                    if let content = completion.choices?.first?.message.content, !content.isEmpty {
+                    let message = completion.choices?.first?.message
+                    if let reasoning = message?.reasoning_content ?? message?.reasoning, !reasoning.isEmpty {
+                        continuation.yield(.reasoning(reasoning))
+                    }
+                    if let content = message?.content, !content.isEmpty {
                         continuation.yield(.token(content))
                     }
                     if let usage = Self.tokenUsage(completion.usage) {
@@ -150,7 +154,11 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
         guard let data = payload.data(using: .utf8),
               let chunk = try? JSONDecoder().decode(Chunk.self, from: data) else { return [] }
         var events: [RemoteEvent] = []
-        if let content = chunk.choices?.first?.delta.content, !content.isEmpty {
+        let delta = chunk.choices?.first?.delta
+        if let reasoning = delta?.reasoning_content ?? delta?.reasoning, !reasoning.isEmpty {
+            events.append(.reasoning(reasoning))
+        }
+        if let content = delta?.content, !content.isEmpty {
             events.append(.token(content))
         }
         if let usage = tokenUsage(chunk.usage) {
@@ -167,7 +175,12 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
 
     private struct Chunk: Decodable {
         struct Choice: Decodable {
-            struct Delta: Decodable { let content: String? }
+            /// Reasoning arrives as `reasoning_content` (llama-server, Magnitude) or, on some servers, `reasoning`.
+            struct Delta: Decodable {
+                let content: String?
+                let reasoning_content: String?
+                let reasoning: String?
+            }
             let delta: Delta
         }
         struct Usage: Decodable {
@@ -182,7 +195,11 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
 
     private struct Completion: Decodable {
         struct Choice: Decodable {
-            struct Message: Decodable { let content: String? }
+            struct Message: Decodable {
+                let content: String?
+                let reasoning_content: String?
+                let reasoning: String?
+            }
             let message: Message
         }
         let choices: [Choice]?

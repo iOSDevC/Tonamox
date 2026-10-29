@@ -28,7 +28,7 @@ final class EngineBenchmarkTests: XCTestCase {
         XCTAssertEqual(result.decodeTokensPerSecond?.minimum, 5)
         XCTAssertEqual(result.decodeTokensPerSecond?.maximum, 20)
         XCTAssertEqual(result.generatedTokens?.median, 11)
-        XCTAssertEqual(result.provenance, .estimated, "one estimated run makes the summary estimated")
+        XCTAssertEqual(result.source, .estimated, "one estimated run makes the summary estimated")
     }
 
     func testSettingsClampToUsableValues() {
@@ -92,7 +92,7 @@ final class EngineBenchmarkTests: XCTestCase {
         let run = try await EngineBenchmark.measureServerRun(provider: provider, modelID: "m", prompt: prompt,
                                                              temperature: 0)
         XCTAssertEqual(run.output, "Hello there friend")
-        XCTAssertEqual(run.provenance, .runtime)
+        XCTAssertEqual(run.source, .runtime)
         XCTAssertEqual(run.promptTokens, 42)
         XCTAssertEqual(run.generatedTokens, 3)
         XCTAssertGreaterThanOrEqual(run.timeToFirstToken, 0.035, "the empty delta must not count as the first token")
@@ -106,9 +106,31 @@ final class EngineBenchmarkTests: XCTestCase {
         let prompt = BenchmarkPrompt.make(for: .chat, slot: 1, nonce: "n", maxTokens: 16)
         let run = try await EngineBenchmark.measureServerRun(provider: provider, modelID: "m", prompt: prompt,
                                                              temperature: 0)
-        XCTAssertEqual(run.provenance, .estimated)
+        XCTAssertEqual(run.source, .estimated)
         XCTAssertEqual(run.generatedTokens, 3, "12 UTF-8 bytes ÷ 4")
         XCTAssertEqual(run.promptTokens, GenerationStats.estimatedTokens(in: prompt.system + "\n" + prompt.user))
+    }
+
+    func testServerRunTimesReasoningDeltasLikeAnswerDeltas() async throws {
+        let provider = BenchScriptedProvider(id: "p", reasoning: ["", "Let me", " think"], tokens: ["Hi"],
+                                             usage: TokenUsage(inputTokens: 9, outputTokens: 5),
+                                             delay: .milliseconds(50))
+        let prompt = BenchmarkPrompt.make(for: .chat, slot: 1, nonce: "n", maxTokens: 16)
+        let run = try await EngineBenchmark.measureServerRun(provider: provider, modelID: "m", prompt: prompt,
+                                                             temperature: 0)
+        XCTAssertEqual(run.output, "<think>Let me think</think>Hi")
+        XCTAssertEqual(run.generatedTokens, 5, "usage counts the reasoning tokens")
+        XCTAssertLessThan(run.timeToFirstToken, 0.16, "the first reasoning delta, not the answer (≥ 0.2 s), is first")
+        XCTAssertGreaterThanOrEqual(run.decodeTime, 0.095, "decode spans the reasoning and the answer")
+    }
+
+    func testServerParserSeparatesReasoningFromContent() {
+        let lines = [#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#,
+                     #"data: {"choices":[{"delta":{"reasoning_content":"thought"}}]}"#,
+                     #"data: {"choices":[{"delta":{"reasoning":"more"}}]}"#,
+                     #"data: {"choices":[{"delta":{"content":"answer"}}]}"#]
+        let events = lines.flatMap(OpenAICompatibleProvider.parse(line:)).map(Self.describe)
+        XCTAssertEqual(events, ["reasoning thought", "reasoning more", "token answer"])
     }
 
     func testRunWithoutTextReportsItsDurationAsTimeToFirstToken() {
@@ -212,7 +234,7 @@ final class EngineBenchmarkTests: XCTestCase {
                                      "load B", "generate B", "generate B", "unload B"])
         let result = try XCTUnwrap(report.result(of: "A", in: "chat"))
         XCTAssertEqual(result.runs.first?.output, "Hello world")
-        XCTAssertEqual(result.runs.first?.provenance, .measured, "in-process runs report the engine's own stats")
+        XCTAssertEqual(result.runs.first?.source, .measured, "in-process runs report the engine's own stats")
         XCTAssertEqual(result.runs.first?.promptTokens, BenchScriptedBackend.stats.promptTokens)
         XCTAssertNotNil(report.candidates.first?.peakMemoryBytes)
         XCTAssertNotNil(report.candidates.first?.loadSeconds)
@@ -258,6 +280,18 @@ final class EngineBenchmarkTests: XCTestCase {
                        .partial(commonPrefixRatio: 0.5))
         XCTAssertEqual(OutputAgreement.compare(nil, with: "abcd", isReference: false, temperature: 0), .unavailable)
         XCTAssertEqual(OutputAgreement.compare("abcd", with: nil, isReference: false, temperature: 0), .unavailable)
+    }
+
+    func testOutputAgreementComparesServerReasoningWithInProcessThinking() {
+        let server = "<think>Short answer.</think>Hello"
+        XCTAssertEqual(OutputAgreement.compare("<think>\nShort answer.\n</think>\n\nHello", with: server,
+                                               isReference: false, temperature: 0), .exact)
+        XCTAssertEqual(OutputAgreement.compare("Short answer.\n</think>\n\nHello", with: server,
+                                               isReference: false, temperature: 0), .exact,
+                       "a template that opens the block in the prompt streams only the closing tag")
+        XCTAssertEqual(OutputAgreement.compare("<think>\nShort", with: "<think>Short</think>", isReference: false,
+                                               temperature: 0),
+                       .partial(commonPrefixRatio: 12.0 / 20.0), "a block cut off by the token budget")
     }
 
     func testReportComparesEachOutputWithTheFirstCandidateThatProducedOne() async {
@@ -401,7 +435,7 @@ extension EngineBenchmarkTests {
         provenance: GenerationStats.Provenance = .runtime
     ) -> BenchmarkRun {
         BenchmarkRun(timeToFirstToken: ttft, promptTime: ttft, decodeTime: decode, promptTokens: prompt,
-                     generatedTokens: generated, provenance: provenance, output: "out")
+                     generatedTokens: generated, source: provenance, output: "out")
     }
 
     static func candidate(
@@ -416,6 +450,14 @@ extension EngineBenchmarkTests {
     static func report(_ candidates: [BenchmarkCandidateResult]) -> BenchmarkReport {
         BenchmarkReport.assemble(settings: BenchmarkSettings(), workloads: [.chat], candidates: candidates,
                                  startedAt: Date(), wasCancelled: false)
+    }
+
+    static func describe(_ event: RemoteEvent) -> String {
+        switch event {
+        case .token(let text): "token \(text)"
+        case .reasoning(let text): "reasoning \(text)"
+        case .usage(let usage): "usage \(usage.inputTokens) \(usage.outputTokens)"
+        }
     }
 
     static func body(of request: URLRequest) throws -> [String: Any] {
@@ -449,20 +491,23 @@ final class BenchCallLog: Sendable {
     }
 }
 
-/// Streams `tokens` (then `usage`), waiting `delay` before each; throws when the run marker names `failingWorkload`.
+/// Streams `reasoning`, `tokens` (then `usage`), waiting `delay` before each; throws when the run marker names
+/// `failingWorkload`.
 struct BenchScriptedProvider: RemoteLLMProvider {
     let id: String
     let displayName = "Scripted"
     let retentionNote = "test"
+    let reasoning: [String]
     let tokens: [String]
     let usage: TokenUsage?
     let delay: Duration
     let failingWorkload: String?
     let log: BenchCallLog?
 
-    init(id: String, tokens: [String], usage: TokenUsage? = nil, delay: Duration = .zero,
+    init(id: String, reasoning: [String] = [], tokens: [String], usage: TokenUsage? = nil, delay: Duration = .zero,
          failingWorkload: String? = nil, log: BenchCallLog? = nil) {
         self.id = id
+        self.reasoning = reasoning
         self.tokens = tokens
         self.usage = usage
         self.delay = delay
@@ -471,7 +516,8 @@ struct BenchScriptedProvider: RemoteLLMProvider {
     }
 
     func stream(_ request: RemoteRequest) -> AsyncThrowingStream<RemoteEvent, Error> {
-        let events = tokens.map(RemoteEvent.token) + (usage.map { [RemoteEvent.usage($0)] } ?? [])
+        let events = reasoning.map(RemoteEvent.reasoning) + tokens.map(RemoteEvent.token)
+            + (usage.map { [RemoteEvent.usage($0)] } ?? [])
         let fails = failingWorkload.map { request.system?.contains(" \($0) ") ?? false } ?? false
         return AsyncThrowingStream { continuation in
             let task = Task {

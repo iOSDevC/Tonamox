@@ -375,23 +375,29 @@ let report = await benchmark.run { event in
 print(report.fastestDecode(in: "chat")?.label ?? "no result", report.modelsDiffer(in: "chat"))
 ```
 
-- **Candidates.** `.inProcess(_ model:)` loads through `ModelManager.load(_:tools:temperature:topP:onProgress:)`
-  (downloading weights not on disk); `BenchmarkCandidate(label:weights:load:)` takes any loader that returns a
-  `Tonamox` for the benchmark's temperature. `.server(_:model:)` uses `OpenAICompatibleProvider.from(_:)`;
-  `BenchmarkCandidate(label:weights:provider:modelID:kind:)` takes any `RemoteLLMProvider`. `weights`
-  (`BenchmarkModelIdentity`: name, format, quantization) is what `modelsDiffer(in:)` compares.
+- **Candidates.** `.inProcess(_ model:)` has `ModelManager` load an instance of its own: weights not on disk are
+  downloaded and the memory budget applies, as in `ModelManager.load(_:tools:temperature:topP:onProgress:)`, but
+  the instance never comes from or goes into the cache. `BenchmarkCandidate(label:weights:load:)` takes any loader
+  that returns a `Tonamox` for the benchmark's temperature. `.server(_:model:)` uses
+  `OpenAICompatibleProvider.from(_:)`; `BenchmarkCandidate(label:weights:provider:modelID:kind:)` takes any
+  `RemoteLLMProvider`. `weights` (`BenchmarkModelIdentity`: name, format, quantization) is what
+  `modelsDiffer(in:)` compares.
 - **Fairness.** Candidates never overlap. An in-process model is released with `ModelManager.release(_:)` after its
-  last run, before the next candidate loads; models loaded elsewhere stay loaded. Each workload runs
+  last run, before the next candidate loads. `.inProcess(_:)` never reuses or releases an instance the app holds,
+  though `ModelManager` may evict the app's models to make room, as for any load. Each workload runs
   `warmUpRuns` discarded runs (default 1), then `measuredRuns` (default 3). Every run's system prompt starts with a
   run marker unique among the candidate's runs and shared by the same run of every candidate, so outputs stay
   comparable and prompt caches share at most the chat template's opening. Every candidate gets the same prompts,
   temperature and token budget (`maxTokensOverride` replaces the workloads' own).
-- **Results.** `BenchmarkReport` → `BenchmarkCandidateResult` (load time, `loadError`, peak `phys_footprint`) →
+- **Results.** `BenchmarkReport` → `BenchmarkCandidateResult` (`loadSeconds`, a download included; `loadError`;
+  peak `phys_footprint`) →
   `BenchmarkWorkloadResult` (`BenchmarkMetric` median / minimum / maximum of time to first token, prefill and decode
-  tok/s and token counts; the least exact `provenance`; `failure`; `agreement`) → `BenchmarkRun`. In-process runs
-  report `lastGenerationStats`. Server runs are timed client-side (`BenchmarkTiming.clientSide`): first non-empty
-  delta, then the last; counts come from the server's usage (`.runtime`) or from text length (`.estimated`).
-  `OutputAgreement` compares each first measured output with the first candidate that produced one: `.exact`,
+  tok/s and token counts; `source`, the least exact provenance; `failure`; `agreement`) → `BenchmarkRun`.
+  In-process runs report `lastGenerationStats`. Server runs are timed client-side (`BenchmarkTiming.clientSide`):
+  first non-empty delta, then the last, reasoning deltas (`RemoteEvent.reasoning`) included; counts come from the
+  server's usage (`.runtime`) or from text length (`.estimated`). A server run's `output` starts with its reasoning
+  inside `<think>…</think>`, as an in-process engine streams it. `OutputAgreement` compares each first measured
+  output with the first candidate that produced one, ignoring whitespace around the `<think>` tags: `.exact`,
   `.partial(commonPrefixRatio:)`, or `.notApplicable` above temperature 0. `promptTruncationSuspects(in:)` lists
   candidates whose exact (`.runtime`) prompt count is under 70 % of the largest exact one.
 - **Failures and cancellation.** `run` never throws: a failed load or run is stored in the report and the next
@@ -1692,6 +1698,13 @@ public enum EscalationReason: String, Sendable, Equatable {
 
 ```swift
 public protocol RemoteLLMProvider: Sendable { /* id, displayName, retentionNote, stream(_:) */ }
+
+public enum RemoteEvent: Sendable {
+    case token(String)       // an answer delta
+    case reasoning(String)   // a reasoning delta streamed apart from the answer (OpenAICompatibleProvider reads
+                             // `reasoning_content` or `reasoning`); the escalation path ignores it
+    case usage(TokenUsage)
+}
 
 public struct OpenAICompatibleProvider: RemoteLLMProvider {
     init(id: String, displayName: String, baseURL: URL, apiKey: String? = nil,

@@ -258,7 +258,7 @@ struct EngineCompareView: View {
         _ candidate: BenchmarkCandidateResult, _ result: BenchmarkWorkloadResult,
         isFastestDecode: Bool, isFastestFirstToken: Bool
     ) -> some View {
-        let provenance = result.provenance
+        let provenance = result.source
         // Decode counts are exact unless estimated; prompt counts only when the runtime reports them.
         let approxOutput = provenance == .estimated ? "≈" : ""
         let approxPrompt = provenance == .runtime ? "" : "≈"

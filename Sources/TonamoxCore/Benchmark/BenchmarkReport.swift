@@ -44,7 +44,7 @@ public struct BenchmarkReport: Codable, Sendable, Hashable {
     /// tokenizers usually differ by less than that margin.
     public func promptTruncationSuspects(in workloadID: String) -> [String] {
         let counts = candidates.compactMap { candidate -> (id: String, tokens: Double)? in
-            guard let result = candidate.result(for: workloadID), result.provenance == .runtime,
+            guard let result = candidate.result(for: workloadID), result.source == .runtime,
                   let tokens = result.promptTokens?.median else { return nil }
             return (candidate.id, tokens)
         }
@@ -91,7 +91,7 @@ public enum BenchmarkTiming: String, Codable, Sendable, Hashable {
     /// ``Tonamox/lastGenerationStats`` of an in-process model.
     case inProcess
     /// Tonamox's clock around a server's stream: time to first token runs from the request to the first non-empty
-    /// delta, so it includes the HTTP round trip and any queueing on the server.
+    /// delta, reasoning included, so it includes the HTTP round trip and any queueing on the server.
     case clientSide
 }
 
@@ -135,7 +135,7 @@ public struct BenchmarkWorkloadResult: Codable, Sendable, Hashable {
     public let generatedTokens: BenchmarkMetric?
     public let promptTokens: BenchmarkMetric?
     /// The least exact provenance among the runs; `nil` without runs.
-    public let provenance: GenerationStats.Provenance?
+    public let source: GenerationStats.Provenance?
     /// Peak `phys_footprint` during this workload's runs; `nil` for servers.
     public let peakMemoryBytes: Int?
     /// Why the runs stopped early; the runs before the failure are kept.
@@ -151,7 +151,7 @@ public struct BenchmarkWorkloadResult: Codable, Sendable, Hashable {
         self.decodeTokensPerSecond = BenchmarkMetric(runs.compactMap(\.decodeTokensPerSecond))
         self.generatedTokens = BenchmarkMetric(runs.map { Double($0.generatedTokens) })
         self.promptTokens = BenchmarkMetric(runs.map { Double($0.promptTokens) })
-        self.provenance = GenerationStats.Provenance.leastExact(runs.map(\.provenance))
+        self.source = GenerationStats.Provenance.leastExact(runs.map(\.source))
         self.peakMemoryBytes = peakMemoryBytes
         self.failure = failure
         self.agreement = .unavailable
@@ -180,7 +180,9 @@ public struct BenchmarkRun: Codable, Sendable, Hashable {
     public let generatedTokens: Int
     /// For servers: ``GenerationStats/Provenance/runtime`` when the server reported usage, otherwise
     /// ``GenerationStats/Provenance/estimated`` (UTF-8 bytes ÷ 4).
-    public let provenance: GenerationStats.Provenance
+    public let source: GenerationStats.Provenance
+    /// The generated text. A server's reasoning deltas lead it inside `<think>…</think>`, as in-process engines
+    /// stream them.
     public let output: String
 
     /// Tokens after the first, divided by ``decodeTime`` (as ``GenerationStats/decodeTokensPerSecond``).
@@ -200,7 +202,7 @@ extension BenchmarkRun {
     init(stats: GenerationStats, output: String) {
         self.init(timeToFirstToken: stats.timeToFirstToken, promptTime: stats.promptTime,
                   decodeTime: stats.decodeTime, promptTokens: stats.promptTokens,
-                  generatedTokens: stats.generatedTokens, provenance: stats.source, output: output)
+                  generatedTokens: stats.generatedTokens, source: stats.source, output: output)
     }
 }
 
@@ -230,7 +232,8 @@ public struct BenchmarkMetric: Codable, Sendable, Hashable {
 
 /// How a candidate's first measured output compares with the reference candidate's: the first candidate in the
 /// report that produced output for the workload. Only meaningful at temperature 0, and only as far as the engines ran
-/// the same weights.
+/// the same weights. Whitespace around `<think>` and `</think>` is ignored, so a server's reasoning compares with the
+/// block an in-process engine streams.
 public enum OutputAgreement: Codable, Sendable, Hashable {
     /// This candidate is the reference.
     case reference
@@ -260,8 +263,24 @@ public enum OutputAgreement: Codable, Sendable, Hashable {
         guard let output else { return .unavailable }
         if isReference { return .reference }
         guard let reference else { return .unavailable }
-        if output == reference { return .exact }
-        let shared = zip(output, reference).prefix { $0 == $1 }.count
-        return .partial(commonPrefixRatio: Double(shared) / Double(max(output.count, reference.count)))
+        let text = comparableText(output), referenceText = comparableText(reference)
+        if text == referenceText { return .exact }
+        let shared = zip(text, referenceText).prefix { $0 == $1 }.count
+        return .partial(commonPrefixRatio: Double(shared) / Double(max(text.count, referenceText.count)))
+    }
+
+    /// `output` trimmed, without whitespace around `<think>` and `</think>`, and with `<think>` added before a lone
+    /// leading `</think>` (a chat template that opens the block in the prompt), so an in-process
+    /// `<think>\nA\n</think>\n\nB` and a server's `<think>A</think>B` compare equal.
+    static func comparableText(_ output: String) -> String {
+        var text = output
+            .replacingOccurrences(of: #"\s*<think>\s*"#, with: "<think>", options: .regularExpression)
+            .replacingOccurrences(of: #"\s*</think>\s*"#, with: "</think>", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let close = text.range(of: "</think>"),
+           text.range(of: "<think>").map({ $0.lowerBound > close.lowerBound }) ?? true {
+            text = "<think>" + text
+        }
+        return text
     }
 }
