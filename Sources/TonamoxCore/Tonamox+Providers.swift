@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 public extension Tonamox {
 
-    /// Discover local Ollama / llama.cpp `llama-server` providers and the models
+    /// Discover local Ollama / llama.cpp `llama-server` / Magnitude providers and the models
     /// they expose. Never throws — an unreachable provider comes back with
     /// `reachable == false` and no models.
     ///

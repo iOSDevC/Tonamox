@@ -14,9 +14,17 @@ final class AskTargetResolverTests: XCTestCase {
     ) -> LocalProviderStatus {
         LocalProviderStatus(
             kind: kind,
-            baseURL: kind == .ollama ? LocalProviderEndpoint.ollamaDefault.baseURL : LocalProviderEndpoint.llamaDefault.baseURL,
+            baseURL: defaultEndpoint(kind).baseURL,
             reachable: reachable, version: nil,
             models: models.map { LocalProviderModel(name: $0, contextLength: contextLength) })
+    }
+
+    private func defaultEndpoint(_ kind: LocalProviderKind) -> LocalProviderEndpoint {
+        switch kind {
+        case .ollama: .ollamaDefault
+        case .llamaServer: .llamaDefault
+        case .magnitude: .magnitudeDefault
+        }
     }
 
     private let allCloudKeys = ["OPENAI_API_KEY": "env-openai", "ANTHROPIC_API_KEY": "env-anthropic"]
@@ -83,11 +91,15 @@ final class AskTargetResolverTests: XCTestCase {
     }
 
     func testAutoWithNoRunningLocalProviderFails() {
-        let down = [status(.ollama, models: [], reachable: false), status(.llamaServer, models: [], reachable: false)]
+        let down = [
+            status(.ollama, models: [], reachable: false), status(.llamaServer, models: [], reachable: false),
+            status(.magnitude, models: [], reachable: false),
+        ]
         let error = failure { () throws(Failure) in try resolve(.auto, local: down) }
         XCTAssertEqual(error, .noLocalProvider)
         XCTAssertEqual(error?.isUsageError, false)
         XCTAssertTrue(error?.errorDescription?.contains("--provider openai") == true)
+        XCTAssertTrue(error?.errorDescription?.contains("http://127.0.0.1:10100/inference/v1") == true)
     }
 
     func testAutoPrefersLlamaServerOverOllama() throws {
@@ -110,6 +122,38 @@ final class AskTargetResolverTests: XCTestCase {
         XCTAssertEqual(target.origin, .localNetwork(.ollama))
         XCTAssertEqual(target.modelID, "llama3:latest")
         XCTAssertEqual(try requestURL(target), "http://localhost:11434/v1/chat/completions")
+    }
+
+    func testAutoPrefersLlamaServerOverMagnitude() throws {
+        let target = try resolve(.auto, local: [
+            status(.ollama, models: [], reachable: false),
+            status(.llamaServer, models: ["qwen3-32b"]),
+            status(.magnitude, models: ["qwen3.5:4b"]),
+        ])
+        XCTAssertEqual(target.origin, .localNetwork(.llamaServer))
+    }
+
+    func testAutoFallsBackToMagnitude() throws {
+        let target = try resolve(.auto, local: [
+            status(.ollama, models: [], reachable: false),
+            status(.llamaServer, models: [], reachable: false),
+            status(.magnitude, models: ["qwen3.5:4b"], contextLength: 40_960),
+        ])
+        XCTAssertEqual(target.origin, .localNetwork(.magnitude))
+        XCTAssertEqual(target.provider.id, "local.magnitude")
+        XCTAssertEqual(target.provider.displayName, "Magnitude (local)")
+        XCTAssertEqual(target.modelID, "qwen3.5:4b")
+        XCTAssertEqual(target.contextLength, 40_960)
+        XCTAssertEqual(try requestURL(target), "http://127.0.0.1:10100/inference/v1/chat/completions")
+    }
+
+    func testLocalModelServedOnlyByMagnitude() throws {
+        let target = try resolve(.local, model: "qwen3.5:4b", local: [
+            status(.llamaServer, models: ["qwen3-32b"]),
+            status(.magnitude, models: ["qwen3.5:4b"]),
+        ])
+        XCTAssertEqual(target.origin, .localNetwork(.magnitude))
+        XCTAssertEqual(try requestURL(target), "http://127.0.0.1:10100/inference/v1/chat/completions")
     }
 
     func testAutoMatchesBestLocalTarget() throws {

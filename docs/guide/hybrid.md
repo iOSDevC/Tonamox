@@ -3,7 +3,7 @@ layout: docs
 title: Hybrid Inference
 parent: Guide
 nav_order: 2.5
-description: "Local-first inference with optional, consent-gated escalation to a bigger local or cloud model — llama-server/Ollama, Anthropic, or OpenAI — with token-saving compression and cost accounting."
+description: "Local-first inference with optional, consent-gated escalation to a bigger local or cloud model — llama-server/Ollama/Magnitude, Anthropic, or OpenAI — with token-saving compression and cost accounting."
 ---
 
 # Hybrid Inference (local + remote)
@@ -53,9 +53,12 @@ formats them as *"via llama-server (local) · &lt;model&gt; · 800 in / 240 out 
 
 ## Detect local providers
 
-Discover a running Ollama (`http://localhost:11434`) or llama.cpp `llama-server`
-(`http://127.0.0.1:8080/v1`) on **this machine** and the models each one exposes. The probe is a
-dependency-free `URLSession` call that never throws (a server that is down is a normal result).
+Discover a running Ollama (`http://localhost:11434`), llama.cpp `llama-server`
+(`http://127.0.0.1:8080/v1`) or Magnitude (`http://127.0.0.1:10100/inference/v1`) on **this
+machine** and the models each one exposes. The probes are dependency-free `URLSession` calls that
+run concurrently with a 2 s timeout and never throw (a server that is down is a normal result).
+llama-server and Magnitude are read from `GET {base}/models`; the context length comes from
+llama-server's `meta.n_ctx_train` or Magnitude's `context_length`, and neither reports a version.
 
 ```swift
 import TonamoxCore
@@ -86,6 +89,22 @@ let result = try await HybridEscalator().routeAndEscalate(
     localAnswer: draftFromLocalModel,
     targets: [target])
 ```
+
+Magnitude on another machine only answers once its Network access is turned on, and then wants
+its key as `Authorization: Bearer`; a probe sends no key, so build that target directly:
+
+```swift
+let magnitude = OpenAICompatibleProvider(
+    id: "lan.magnitude", displayName: "Magnitude (Mac Studio)",
+    baseURL: URL(string: "http://192.168.1.30:10100/inference/v1")!,
+    apiKey: magnitudeKey)
+let target = RemoteTarget(provider: magnitude, modelID: "qwen3.5:4b", origin: .localNetwork(.magnitude))
+```
+
+{: .note }
+> Magnitude is a separate desktop app, not part of Tonamox. Its update check sends hardware
+> information, and `magnitude server setup` installs a self-updating background service. Tonamox
+> only talks to the server you run.
 
 Ollama also lists **cloud models** (`deepseek-v4-pro:cloud`, `gpt-oss:120b-cloud`) that it forwards
 to `ollama.com`. They carry `remoteHost` and `runsLocally == false`. `bestLocalTarget()` and
@@ -153,7 +172,7 @@ raises the bar for the latter).
   `.costUnknown` and the offer's `projectedCostUSD` is `nil`. A priced request under the cap gets the
   same reason while the session holds unpriced calls (`unpricedRecordCount > 0`), because the
   session's spend is then unknown.
-- Only the first candidate is tried: a llama-server or Ollama on this machine if one is running,
+- Only the first candidate is tried: a llama-server, Ollama or Magnitude on this machine if one is running,
   otherwise the first cloud key found (Anthropic, then OpenAI), or the first of the `targets:` you
   pass. An error from it, such as HTTP 429, is thrown to the caller; there is no fall-through to the
   next target.
@@ -214,8 +233,8 @@ let result = try await HybridEscalator().escalate(
     to: target, context: "", question: prompt, redactPII: !target.isLocalNetwork)
 ```
 
-Without a `baseURL:`, `.auto` and `.local` return your llama-server, else Ollama, and never a
-cloud target; they throw `AskTargetResolver.Failure.noLocalProvider` when neither runs.
+Without a `baseURL:`, `.auto` and `.local` return your llama-server, else Ollama, else Magnitude,
+and never a cloud target; they throw `AskTargetResolver.Failure.noLocalProvider` when none runs.
 `.openAI` / `.anthropic` take the key from `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, else the Keychain, and throw
 `.missingAPIKey` without one. `baseURL:` (with `model:`) targets any OpenAI-compatible server;
 a loopback or private-network host gets the origin `.localNetwork(.llamaServer)`, any other
@@ -228,7 +247,7 @@ draft goes through `routeAndEscalate(localAnswer:)` and escalates only when it l
 the Extractor, Reviewer and Reporter steps always stay local. It reuses the same compression,
 consent, and cost machinery, and redacts per the policy's `piiRedaction` (cloud targets by
 default). Fail-closed: any error or a *stay-local* decision keeps the local draft. It passes no
-`targets:`, so it escalates only to a llama-server or Ollama on the same machine, or to a cloud key.
+`targets:`, so it escalates only to a llama-server, Ollama or Magnitude on the same machine, or to a cloud key.
 
 The reusable pipeline lives in the **`TonamoxAgents`** module (requires iOS 26 / macOS 26 and
 the Xcode 26 SDK):
@@ -298,7 +317,7 @@ let escalator = HybridEscalator(ledger: ledger)
 | Area | Type(s) |
 |---|---|
 | Discovery | `LocalProviderDetector`, `LocalProviderStatus` |
-| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / OpenAI), `AnthropicProvider` |
+| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / Magnitude / OpenAI), `AnthropicProvider` |
 | Transport | internal (`RemoteBackend` adapts a `RemoteLLMProvider` to `InferenceBackend`; not public API) |
 | Routing | `EscalationRouter` (R1–R7), `EscalationPolicy`, `RoutingDecision`, `HybridEscalator`, `AskTargetResolver` |
 | Compression | `ContextCompressor` + pluggable `SelfInfoScorer` |

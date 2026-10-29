@@ -80,7 +80,7 @@ public struct RemoteTarget: Sendable {
     public enum Origin: Sendable, Hashable {
         /// A hosted cloud provider — full consent + retention disclosure.
         case cloud
-        /// The user's own machine (llama-server / Ollama) — light-touch consent, $0.
+        /// The user's own machine (llama-server / Ollama / Magnitude) — light-touch consent, $0.
         case localNetwork(LocalProviderKind)
     }
 

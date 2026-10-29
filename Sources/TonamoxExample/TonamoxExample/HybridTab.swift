@@ -147,7 +147,7 @@ struct HybridTab: View {
     private var providersSection: some View {
         Section {
             if providers.allSatisfy({ !$0.reachable }) {
-                Text("No local provider detected. Start Ollama (:11434) or llama-server (:8080).")
+                Text("No local provider detected. Start Ollama (:11434), llama-server (:8080) or Magnitude (:10100).")
                     .font(.caption).foregroundStyle(.secondary)
             }
             ForEach(providers) { provider in providerRow(provider) }
@@ -171,7 +171,7 @@ struct HybridTab: View {
     private func providerRow(_ p: LocalProviderStatus) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text(p.kind == .ollama ? "Ollama" : "llama-server").bold()
+                Text(p.kind.displayName).bold()
                 Spacer()
                 if p.isAvailable {
                     Label("\(p.models.count) model\(p.models.count == 1 ? "" : "s")",

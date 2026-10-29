@@ -36,12 +36,12 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
         self.retentionNote = retentionNote
     }
 
-    /// Build a provider from a discovered local llama-server / Ollama endpoint.
+    /// Build a provider from a discovered local llama-server / Ollama / Magnitude endpoint.
     public static func from(_ status: LocalProviderStatus) -> OpenAICompatibleProvider {
         // Ollama's status URL is its native API root; the OpenAI dialect lives under /v1.
         OpenAICompatibleProvider(
             id: "local.\(status.kind.rawValue)",
-            displayName: status.kind == .ollama ? "Ollama (local)" : "llama-server (local)",
+            displayName: "\(status.kind.displayName) (local)",
             baseURL: status.kind == .ollama ? status.baseURL.appending(path: "v1") : status.baseURL,
             apiKey: nil,
             retentionNote: "Runs on your own machine — nothing leaves your device.")

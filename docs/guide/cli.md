@@ -33,7 +33,7 @@ swift build -c release --product tonamox
 ## Commands
 
 ```
-tonamox providers                      # detect Ollama / llama-server + models
+tonamox providers                      # detect Ollama / llama-server / Magnitude + models
 tonamox tools                          # list on-device ML tools by category, with availability
 tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
          [--base-url <url>] [--max-tokens N]  # ask a bigger model; local unless you name a cloud API
@@ -47,7 +47,7 @@ tonamox imagegen "<prompt>" [--model schnell|dev|<repo>] [--base-model schnell|d
 ```
 
 - **`providers`** / **`tools`** / **`ocr`** / **`ml`** / **`models`** need no key and no model download.
-- **`ask`** needs a running llama-server / Ollama, a named cloud provider with a key, or `--base-url`;
+- **`ask`** needs a running llama-server / Ollama / Magnitude, a named cloud provider with a key, or `--base-url`;
   see [below](#ask-a-bigger-model-tonamox-ask).
 - **`imagegen`** prints the path of the PNG it wrote (`<dir>/image.png`, a temporary folder by default).
   It defaults to `--model schnell` (a gated repo) and `--quantize 4`, and `--lora` takes local files only;
@@ -64,13 +64,13 @@ tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
 
 | `--provider` | Target | Key |
 |---|---|---|
-| `auto` (default), `local` | A running `llama-server` (`127.0.0.1:8080/v1`), else Ollama (`localhost:11434`); the model with the largest trained context (Ollama: its first listed model) | none |
+| `auto` (default), `local` | A running `llama-server` (`127.0.0.1:8080/v1`), else Ollama (`localhost:11434`), else Magnitude (`127.0.0.1:10100/inference/v1`); the model with the largest trained context (Ollama: its first listed model) | none |
 | `openai` | `https://api.openai.com/v1`, default model `gpt-4o` | `OPENAI_API_KEY`, else Keychain account `cloud.openai` |
 | `anthropic` | Anthropic Messages API, default model `claude-sonnet-4-5` | `ANTHROPIC_API_KEY`, else Keychain account `cloud.anthropic` |
 
 - **`auto` never picks a cloud API.** It also skips Ollama cloud models (`name:cloud`, which Ollama
   forwards to `ollama.com`; `tonamox providers` marks them). With no on-machine model running, it exits 1
-  and lists the options (start llama-server / Ollama, `--provider openai|anthropic`, or `--base-url`).
+  and lists the options (start llama-server / Ollama / Magnitude, `--provider openai|anthropic`, or `--base-url`).
 - **`--model <id>`** overrides the default. For `auto` / `local` it selects the local server that
   serves that model (`llama3` also matches Ollama's `llama3:latest`) and fails if none does.
 - **`--base-url <url> --model <id>`** sends to any other OpenAI-compatible server (`chat/completions`

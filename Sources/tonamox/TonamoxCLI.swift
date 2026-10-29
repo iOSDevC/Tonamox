@@ -34,12 +34,12 @@ struct TonamoxCLI {
 
     // MARK: - providers
 
-    /// Detect local inference providers (Ollama / llama-server) and their models.
+    /// Detect local inference providers (Ollama / llama-server / Magnitude) and their models.
     static func runProviders() async {
         print("Network: \(NetworkMonitor.shared.isOnline ? "online" : "offline")")
         let statuses = await LocalProviderDetector.detectAll()
         for status in statuses {
-            let name = status.kind == .ollama ? "Ollama" : "llama-server"
+            let name = status.kind.displayName
             let url = status.baseURL.absoluteString
             if status.isAvailable {
                 print("● \(name) — \(url) (\(status.models.count) models)")
@@ -84,7 +84,7 @@ struct TonamoxCLI {
         """
 
     /// Ask a bigger model. The default (`auto`) uses a running llama-server, else
-    /// Ollama, and never a cloud API; see `AskTargetResolver`. Answer → stdout,
+    /// Ollama, else Magnitude, and never a cloud API; see `AskTargetResolver`. Answer → stdout,
     /// receipt → stderr (so stdout stays clean for piping).
     static func runAsk(_ args: [String]) async throws {
         var prompt: String?
@@ -243,12 +243,13 @@ struct TonamoxCLI {
         tonamox — Tonamox integration CLI
 
         USAGE:
-          tonamox providers                      Detect local providers (Ollama / llama-server)
+          tonamox providers                      Detect local providers (Ollama / llama-server / Magnitude)
           tonamox tools                          List on-device ML tools by category, with availability
           tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
                    [--base-url <url>] [--max-tokens N]
-                                              Ask a bigger model: a running llama-server, else Ollama
-                                                (auto, the default); a cloud API only when named
+                                              Ask a bigger model: a running llama-server, else Ollama,
+                                                else Magnitude (auto, the default); a cloud API
+                                                only when named
                                                 (default models \(RemoteTarget.defaultOpenAIModel),
                                                 \(RemoteTarget.defaultAnthropicModel))
           tonamox ocr <image>                    Extract text from an image via native Vision OCR

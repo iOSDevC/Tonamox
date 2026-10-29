@@ -93,6 +93,11 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   [Schema grammars](docs/guide/backends.md#schema-grammars)). This includes `tonamox receipt extract|eval --model`
   with such a model. MLX and layer-streaming keep validation only. `usesSchemaGrammar = false` restores the
   previous path.
+- `LocalProviderKind` has a new case, `.magnitude`: an exhaustive `switch` over it needs a branch for it.
+- **Behaviour change:** `LocalProviderEndpoint.defaults` also probes Magnitude
+  (`http://127.0.0.1:10100/inference/v1`), so `detectAll()`, `Tonamox.detectLocalProviders()` and
+  `tonamox providers` return three statuses instead of two, and `bestLocalTarget()` and `tonamox ask` fall back to
+  a running Magnitude after llama-server and Ollama.
 
 ### Added
 
@@ -150,6 +155,13 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   `ToolTurnSummary` in `lastToolTurn`.
 - Tool calling on MLX text models, with the same controls. `ModelManager.load(_:tools:)` runs an MLX tool instance
   on the weights of a cached instance of the same model instead of loading a second copy.
+- Magnitude detection: `LocalProviderKind.magnitude`, `LocalProviderEndpoint.magnitudeDefault` and
+  `LocalProviderKind.displayName`. Magnitude's models come from `GET {base}/models`, with its `context_length` as
+  `LocalProviderModel.contextLength` and no version; `OpenAICompatibleProvider.from(_:)` names it
+  "Magnitude (local)" and keeps its base URL. Only this machine is probed: a Magnitude elsewhere needs its Network
+  access on and `OpenAICompatibleProvider(id:displayName:baseURL:apiKey:)` with its key. Magnitude is a separate app
+  whose update check sends hardware information and whose `magnitude server setup` installs a self-updating
+  background service.
 
 ### Changed
 
@@ -173,7 +185,7 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   and as llama.cpp computed them one at a time; a full prefill re-tokenizes the reply text (usually, not always, to
   the same tokens) and computes it in one batch, so at temperature 0 a reused turn can now and then pick a different
   token.
-- `tonamox ask` uses a local llama-server or Ollama by default, or OpenAI, Anthropic or a custom endpoint when named.
+- `tonamox ask` uses a local llama-server, Ollama or Magnitude by default, or OpenAI, Anthropic or a custom endpoint when named.
 
 ### Fixed
 

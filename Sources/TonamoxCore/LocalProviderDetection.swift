@@ -9,13 +9,25 @@ public enum LocalProviderKind: String, Sendable, Codable {
     case ollama
     /// llama.cpp `llama-server`, OpenAI-compatible (default port 8080, `/v1`).
     case llamaServer
+    /// Magnitude's local inference server, OpenAI-compatible (default port 10100, `/inference/v1`).
+    case magnitude
+
+    /// Human-readable name for pickers, logs and the CLI.
+    public var displayName: String {
+        switch self {
+        case .ollama: "Ollama"
+        case .llamaServer: "llama-server"
+        case .magnitude: "Magnitude"
+        }
+    }
 }
 
 /// A configurable endpoint to probe for one provider.
 public struct LocalProviderEndpoint: Sendable, Hashable {
     public let kind: LocalProviderKind
     /// Base URL, without a trailing slash. Ollama: `http://localhost:11434`.
-    /// llama-server: `http://127.0.0.1:8080/v1` (must include the `/v1` segment).
+    /// llama-server: `http://127.0.0.1:8080/v1`; Magnitude: `http://127.0.0.1:10100/inference/v1`
+    /// (both must include the `/v1` segment).
     public let baseURL: URL
 
     public init(kind: LocalProviderKind, baseURL: URL) {
@@ -31,20 +43,24 @@ public struct LocalProviderEndpoint: Sendable, Hashable {
     public static let llamaDefault = LocalProviderEndpoint(
         kind: .llamaServer, baseURL: URL(string: "http://127.0.0.1:8080/v1")!)
 
-    /// Both default providers.
-    public static let defaults: [LocalProviderEndpoint] = [.ollamaDefault, .llamaDefault]
+    /// Magnitude on its default port and `/inference/v1` path.
+    public static let magnitudeDefault = LocalProviderEndpoint(
+        kind: .magnitude, baseURL: URL(string: "http://127.0.0.1:10100/inference/v1")!)
+
+    /// Every default provider, all on this machine.
+    public static let defaults: [LocalProviderEndpoint] = [.ollamaDefault, .llamaDefault, .magnitudeDefault]
 }
 
-/// A model exposed by a detected provider, normalized across the two APIs.
+/// A model exposed by a detected provider, normalized across the Ollama and OpenAI `/models` APIs.
 public struct LocalProviderModel: Sendable, Codable, Identifiable, Hashable {
     public var id: String { name }
-    /// Ollama tag (e.g. `llama3:latest`) or llama-server model id.
+    /// Ollama tag (e.g. `llama3:latest`), or the model id of an OpenAI-compatible server.
     public let name: String
     /// Size in bytes: Ollama's on-disk size, or llama-server's `meta.size` when it reports one.
     public let sizeBytes: Int64?
     /// Quantization level (Ollama only; `nil` otherwise).
     public let quantization: String?
-    /// Trained context length (llama-server only; `nil` for Ollama).
+    /// Context length: llama-server's `meta.n_ctx_train` or Magnitude's `context_length`; `nil` for Ollama.
     public let contextLength: Int?
     /// The host the server forwards this model to (Ollama cloud models report
     /// `https://ollama.com:443`); `nil` for a model that runs on the server itself.
@@ -82,7 +98,7 @@ public struct LocalProviderStatus: Sendable, Identifiable, Hashable {
     public let baseURL: URL
     /// `false` when the server is down, timed out, or returned unparseable data.
     public let reachable: Bool
-    /// Server version (Ollama only; `nil` for llama-server, which exposes none).
+    /// Server version (Ollama only; `nil` for llama-server and Magnitude, which expose none).
     public let version: String?
     public let models: [LocalProviderModel]
 
@@ -106,8 +122,8 @@ public struct LocalProviderStatus: Sendable, Identifiable, Hashable {
 
 // MARK: - Detector
 
-/// Discovers running local providers (Ollama, llama.cpp `llama-server`) and the
-/// models they expose.
+/// Discovers running local providers (Ollama, llama.cpp `llama-server`, Magnitude)
+/// and the models they expose.
 ///
 /// Detection NEVER throws: a down or unreachable server yields a
 /// ``LocalProviderStatus`` with `reachable == false`. This is a deliberate
@@ -141,10 +157,15 @@ public enum LocalProviderDetector {
     ) async -> LocalProviderStatus {
         let session = makeSession(timeout: timeout)
         defer { session.invalidateAndCancel() }
+        return await detect(endpoint, session: session)
+    }
+
+    /// Probe through `session`; tests pass one backed by a stub `URLProtocol`.
+    static func detect(_ endpoint: LocalProviderEndpoint, session: URLSession) async -> LocalProviderStatus {
         do {
             switch endpoint.kind {
-            case .ollama:      return try await probeOllama(endpoint, session: session)
-            case .llamaServer: return try await probeLlamaServer(endpoint, session: session)
+            case .ollama: return try await probeOllama(endpoint, session: session)
+            case .llamaServer, .magnitude: return try await probeOpenAIModels(endpoint, session: session)
             }
         } catch {
             logger.debug("Provider \(endpoint.kind.rawValue, privacy: .public) not detected: \(error.localizedDescription, privacy: .public)")
@@ -180,20 +201,21 @@ public enum LocalProviderDetector {
             reachable: true, version: version, models: models)
     }
 
-    private static func probeLlamaServer(_ endpoint: LocalProviderEndpoint, session: URLSession) async throws -> LocalProviderStatus {
+    /// `GET {base}/models` for the OpenAI-compatible servers (llama-server, Magnitude).
+    private static func probeOpenAIModels(_ endpoint: LocalProviderEndpoint, session: URLSession) async throws -> LocalProviderStatus {
         // baseURL already includes /v1, so append only "models".
         let list = try await getJSON(
-            LlamaModelsDTO.self,
+            OpenAIModelsDTO.self,
             from: endpoint.baseURL.appending(path: "models"),
             session: session)
         let models = list.data.map {
             LocalProviderModel(
                 name: $0.id, sizeBytes: $0.meta?.size,
-                quantization: nil, contextLength: $0.meta?.contextLength)
+                quantization: nil, contextLength: $0.meta?.contextLength ?? $0.contextLength)
         }
-        logger.info("Detected llama-server with \(models.count) model(s)")
+        logger.info("Detected \(endpoint.kind.displayName, privacy: .public) with \(models.count) model(s)")
         return LocalProviderStatus(
-            kind: .llamaServer, baseURL: endpoint.baseURL,
+            kind: endpoint.kind, baseURL: endpoint.baseURL,
             reachable: true, version: nil, models: models)
     }
 
@@ -241,11 +263,18 @@ private struct OllamaDetailsDTO: Decodable {
     enum CodingKeys: String, CodingKey { case quantizationLevel = "quantization_level" }
 }
 
-private struct LlamaModelsDTO: Decodable { let data: [LlamaModelDTO] }
+private struct OpenAIModelsDTO: Decodable { let data: [OpenAIModelDTO] }
 
-private struct LlamaModelDTO: Decodable {
+private struct OpenAIModelDTO: Decodable {
     let id: String
+    /// llama-server only.
     let meta: LlamaMetaDTO?
+    /// Magnitude reports the context window top-level instead of under `meta`.
+    let contextLength: Int?
+    enum CodingKeys: String, CodingKey {
+        case id, meta
+        case contextLength = "context_length"
+    }
 }
 
 private struct LlamaMetaDTO: Decodable {

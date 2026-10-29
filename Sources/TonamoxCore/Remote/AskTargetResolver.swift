@@ -9,9 +9,9 @@ public enum AskTargetResolver {
 
     /// The provider a caller asks for.
     public enum Choice: String, Sendable, CaseIterable {
-        /// A running llama-server, else Ollama. Same as `.local`; the default.
+        /// A running llama-server, else Ollama, else Magnitude. Same as `.local`; the default.
         case auto
-        /// A running llama-server, else Ollama.
+        /// A running llama-server, else Ollama, else Magnitude.
         case local
         /// Hosted OpenAI; key from `OPENAI_API_KEY`, else the Keychain `cloud.openai`.
         case openAI = "openai"
@@ -21,7 +21,7 @@ public enum AskTargetResolver {
 
     /// Why no target could be chosen. `errorDescription` says what to do next.
     public enum Failure: Error, Equatable, LocalizedError {
-        /// No llama-server or Ollama with an on-machine model is running.
+        /// No llama-server, Ollama or Magnitude with an on-machine model is running.
         case noLocalProvider
         /// No running local provider serves `model` on its machine; `available` lists what they do serve.
         case modelNotServedLocally(model: String, available: [String])
@@ -47,7 +47,8 @@ public enum AskTargetResolver {
             case .noLocalProvider:
                 """
                 No local model server with an on-machine model is running (Ollama cloud models don't count). Either:
-                  - start llama-server (http://127.0.0.1:8080/v1) or Ollama (http://localhost:11434) with a model loaded,
+                  - start llama-server (http://127.0.0.1:8080/v1), Ollama (http://localhost:11434)
+                    or Magnitude (http://127.0.0.1:10100/inference/v1) with a model loaded,
                   - pass --provider openai or --provider anthropic to send the prompt to that cloud API, or
                   - pass --base-url <url> --model <id> for another OpenAI-compatible server.
                 """

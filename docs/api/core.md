@@ -441,7 +441,7 @@ public enum BackendKind: String, Sendable {
     case mlx
     case llamaCpp
     case layerStreaming
-    case remote   // cloud, or the user's own llama-server / Ollama
+    case remote   // cloud, or the user's own llama-server / Ollama / Magnitude
     case hybrid   // local backend that can escalate single requests
 }
 // recommendedBackend(for:) returns only .mlx, .llamaCpp or .layerStreaming.
@@ -1456,10 +1456,23 @@ See the [Hybrid Inference guide]({{ '/guide/hybrid' | relative_url }}) for the f
 ### Local provider detection
 
 ```swift
+public enum LocalProviderKind: String, Sendable, Codable {
+    case ollama, llamaServer, magnitude
+    var displayName: String              // "Ollama", "llama-server", "Magnitude"
+}
+
+public struct LocalProviderEndpoint: Sendable, Hashable {
+    static let ollamaDefault             // http://localhost:11434
+    static let llamaDefault              // http://127.0.0.1:8080/v1
+    static let magnitudeDefault          // http://127.0.0.1:10100/inference/v1
+    static let defaults: [LocalProviderEndpoint]   // all three, probed concurrently
+}
+
 @MainActor
 public enum LocalProviderDetector {
-    // By default probes Ollama (http://localhost:11434) and llama-server (http://127.0.0.1:8080/v1)
-    // on this machine; pass LocalProviderEndpoint(kind:baseURL:) for another host. Never throws.
+    // By default probes Ollama, llama-server and Magnitude on this machine (llama-server and
+    // Magnitude via GET {base}/models); pass LocalProviderEndpoint(kind:baseURL:) for another host.
+    // Never throws.
     static func detectAll(
         endpoints: [LocalProviderEndpoint] = LocalProviderEndpoint.defaults,
         timeout: TimeInterval = 2.0
@@ -1470,7 +1483,7 @@ public struct LocalProviderModel: Sendable, Codable, Identifiable, Hashable {
     let name: String
     let sizeBytes: Int64?                // Ollama: size; llama-server: meta.size
     let quantization: String?            // Ollama only
-    let contextLength: Int?              // llama-server only
+    let contextLength: Int?              // llama-server: meta.n_ctx_train; Magnitude: context_length
     let remoteHost: String?              // Ollama cloud models: "https://ollama.com:443"
     var runsLocally: Bool                // false with a remoteHost or a ":cloud" / "-cloud" tag
 }
@@ -1533,7 +1546,7 @@ public final class HybridEscalator {
         onToken: @escaping @MainActor (String) -> Void = { _ in }
     ) async throws -> Result
 
-    // A llama-server (preferred) or Ollama on this machine (LocalProviderEndpoint.defaults), with its
+    // A llama-server (preferred), Ollama or Magnitude on this machine (LocalProviderEndpoint.defaults), with its
     // largest-context model; nil if none runs. Nothing scans the network.
     // Skips models with runsLocally == false (Ollama cloud models forward prompts off the machine).
     static func bestLocalTarget() async -> RemoteTarget?
@@ -1640,7 +1653,8 @@ public protocol RemoteLLMProvider: Sendable { /* id, displayName, retentionNote,
 public struct OpenAICompatibleProvider: RemoteLLMProvider {
     init(id: String, displayName: String, baseURL: URL, apiKey: String? = nil,
          streaming: Bool = true, retentionNote: String = "Sent to an OpenAI-compatible endpoint.")
-    // Build from a detected local llama-server / Ollama endpoint (Ollama requests go to <root>/v1).
+    // Build from a detected local llama-server / Ollama / Magnitude endpoint, named "<kind> (local)"
+    // (Ollama requests go to <root>/v1; the others use the detected base URL as is).
     static func from(_ status: LocalProviderStatus) -> OpenAICompatibleProvider
     // Unavailable: GitHub retired GitHub Models on 2026-07-30. Calling it is a compile error.
     @available(*, unavailable, message: "GitHub retired GitHub Models on 2026-07-30. …")
@@ -1677,7 +1691,7 @@ anything else `.cloud` (also under `.auto`).
 ```swift
 public enum AskTargetResolver {
     enum Choice: String, Sendable, CaseIterable {
-        case auto, local                 // llama-server, else Ollama (HybridEscalator.bestLocalTarget order)
+        case auto, local                 // llama-server, else Ollama, else Magnitude (bestLocalTarget order)
         case openAI = "openai"           // key: OPENAI_API_KEY, else Keychain "cloud.openai"
         case anthropic                   // key: ANTHROPIC_API_KEY, else Keychain "cloud.anthropic"
     }

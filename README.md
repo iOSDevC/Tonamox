@@ -24,7 +24,7 @@ Research notes, not a shipped feature: [Distributed inference](docs/guide/distri
 - **Swift 6 concurrency** — All public APIs are `@MainActor`-isolated or `Sendable`, with `actor`-based stores for data-race safety.
 - **OOM prevention that fails safe** — One source of truth (`HardwareProfile.availableMemoryBytes()`) asks the OS and returns `nil` rather than inventing a number. iOS reports "unknown" exactly when the process is at its jetsam limit, so unknown counts as *pressure*: layer-streaming shrinks its context to 512 tokens and stops a reply early (checked every 32 tokens), and the model cache keeps one model. Paired with `DispatchSource` listeners and per-generation checks.
 - **Hybrid RAG pipeline** — FTS5 keyword pre-filter + Accelerate cosine re-ranking, stored in SQLite. Zero external dependencies.
-- **Local provider detection** — `Tonamox.detectLocalProviders()` discovers a running Ollama (`:11434`) or llama.cpp `llama-server` (`:8080/v1`) and the models each exposes, via a dependency-free URLSession probe (never throws — a down server is a normal result).
+- **Local provider detection** — `Tonamox.detectLocalProviders()` discovers a running Ollama (`:11434`), llama.cpp `llama-server` (`:8080/v1`) or Magnitude (`:10100/inference/v1`) on this machine and the models each exposes, via a dependency-free URLSession probe (never throws — a down server is a normal result).
 - **Token-optimized hybrid inference** — Stay local by default: `Tonamox.stream()` runs on-device models, and `HybridEscalator` sends a request to your own llama-server/Ollama box or a cloud model only when needed, streaming its answer through an `onToken` callback. It **cuts the tokens sent to the remote** via selective-context compression (input-dependent), an in-memory response cache (repeat calls in a session cost **$0**), and PII redaction (on by default for cloud targets on the policy path). Every escalation returns its token counts, and `CostLedger` records its cost, for a receipt. The policy path is off by default and consent-gated. See [Hybrid Inference](#hybrid-inference-local--remote).
 - **Agent orchestration (Architect-step escalation)** — `AgentCrew` (Extractor → Reviewer → Architect → Reporter) escalates the Architect's local draft to a bigger model when it looks weak, reusing the same compression + consent + cost machinery.
 - **On-device ML tools, not just LLMs** — Typed, availability-checked wrappers over Apple's ML frameworks, using models that ship with the OS and no extra dependencies: Vision (OCR lines, image classification, barcodes & QR, face detection), NaturalLanguage (language ID, named entities, sentiment, embeddings), SoundAnalysis (303 everyday sounds), a runner for **your own Core ML models**, and **on-device Create ML training** of text classifiers. `SystemToolRegistry` reports which built-in tools run on each device. See [On-device ML tools](#on-device-ml-tools).
@@ -184,7 +184,7 @@ call's cost in its escalation history, marking unknown costs "unpriced".
 ```swift
 import TonamoxCore
 
-// Probe a running Ollama (:11434) and llama.cpp llama-server (:8080/v1) concurrently.
+// Probe a running Ollama (:11434), llama.cpp llama-server (:8080/v1) and Magnitude (:10100/inference/v1) concurrently.
 let providers = await Tonamox.detectLocalProviders()   // never throws
 for p in providers where p.isAvailable {
     print(p.kind, p.version ?? "", p.models.map(\.name))
@@ -195,6 +195,10 @@ for p in providers where p.isAvailable {
 > Add `NSLocalNetworkUsageDescription` to your Info.plist, as the Example app does ("Connects to a model server on
 > your local network, such as Ollama or llama-server on your Mac."). The default endpoints are loopback and do not
 > need it.
+
+> Magnitude is a separate app: its update check sends hardware information, and `magnitude server setup` installs a
+> self-updating background service. Only the local one is probed; a Magnitude on another machine needs its Network
+> access on and `OpenAICompatibleProvider(id:displayName:baseURL:apiKey:)` with its key.
 
 ### Escalate a request
 
@@ -465,7 +469,7 @@ handy as a reference and in CI. Build with `scripts/build-cli.sh` (or
 `swift build -c release --product tonamox`).
 
 ```
-tonamox providers                      # detect Ollama / llama-server + models
+tonamox providers                      # detect Ollama / llama-server / Magnitude + models
 tonamox tools                          # list on-device ML tools by category, with availability
 tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>] [--base-url <url>]
                                     # ask a bigger model: your llama-server/Ollama unless you name a cloud API
@@ -477,7 +481,7 @@ tonamox imagegen "<prompt>" [--lora <path>] …  # FLUX image generation via mfl
 tonamox models search|check|devices …  # which Hugging Face models run here, and why not
 ```
 
-`ask` sends to a running llama-server, else Ollama, and never picks a cloud API on its own.
+`ask` sends to a running llama-server, else Ollama, else Magnitude, and never picks a cloud API on its own.
 `--provider openai` / `--provider anthropic` use `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (else the
 Keychain accounts `cloud.openai` / `cloud.anthropic`); `--base-url <url> --model <id>` targets any
 other OpenAI-compatible server, with an optional `AURA_API_KEY`. All flags:

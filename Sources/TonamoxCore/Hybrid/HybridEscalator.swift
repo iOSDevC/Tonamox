@@ -27,7 +27,8 @@ public final class HybridEscalator {
     // MARK: - Target discovery
 
     /// Discover the best local-network escalation target: prefers `llama-server`,
-    /// then Ollama, choosing the model with the largest context window. Models the
+    /// then the rest in probe order (Ollama, then Magnitude by default), choosing
+    /// the model with the largest context window. Models the
     /// server forwards off the machine (Ollama cloud models) are skipped. Returns
     /// `nil` if no local provider is running.
     public static func bestLocalTarget() async -> RemoteTarget? {
