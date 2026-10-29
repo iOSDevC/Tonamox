@@ -111,7 +111,7 @@ public enum BenchmarkTiming: String, Codable, Sendable, Hashable {
 ///
 /// The two figures count a model's weights differently, so neither compares llama.cpp with MLX on its own:
 /// llama.cpp maps a GGUF file into memory, and its clean file-backed pages count toward ``residentBytes`` but not
-/// ``footprintBytes``; MLX copies its weights into memory that ``footprintBytes`` counts.
+/// ``footprintBytes``. Which figure counts MLX's Metal buffers has not been measured.
 public struct BenchmarkMemory: Codable, Sendable, Hashable {
     /// `phys_footprint`: what iOS counts toward an app's memory limit.
     public let footprintBytes: Int
@@ -161,7 +161,8 @@ public struct BenchmarkCandidateResult: Codable, Sendable, Hashable, Identifiabl
     public let loadSeconds: Double?
     /// ``loadSeconds`` plus the time to first token of the candidate's first run (a warm-up run unless there were
     /// none): the wait from a cold start to the first token. For a server it is that first run's time to first token,
-    /// which includes loading the model only when the server had not loaded it yet. `nil` when no run finished.
+    /// which includes loading the model only when the server had not loaded it yet. `nil` when the first workload's
+    /// first run did not finish: a later run is no longer cold.
     public let coldTimeToFirstToken: TimeInterval?
     /// Why the model did not load; no workload ran.
     public let loadError: String?

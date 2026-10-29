@@ -408,15 +408,15 @@ print(report.fastestDecode(in: "chat")?.label ?? "no result", report.modelsDiffe
   an in-process MLX model, which times prefill itself; elsewhere prefill tok/s is prompt tokens over the time to
   first token (llama.cpp in process: an estimated count; servers: client-side, HTTP included). `BenchmarkMemory`
   holds `footprintBytes` (`phys_footprint`) and `residentBytes` (`resident_size`) of this process, servers not
-  measured: llama.cpp maps the GGUF file, whose pages count toward resident but not footprint, while MLX copies its
-  weights into memory that footprint counts, so neither figure alone compares the two engines.
+  measured: llama.cpp maps the GGUF file, whose pages count toward resident but not footprint, and which one counts
+  MLX's Metal buffers has not been measured, so neither figure alone compares the two engines.
 - **JSON.** The report is `Codable`. `OutputAgreement` encodes as `{"kind": "partial", "commonPrefixRatio": 0.82}`
   (`kind`: `reference`, `exact`, `partial`, `notApplicable`, `unavailable`), and a `BenchmarkRun` also encodes its
   `decodeTokensPerSecond` and `prefillTokensPerSecond`, which decoding recomputes.
 - **Failures and cancellation.** `run` never throws: a failed load or run is stored in the report and the next
   workload or candidate goes on. Cancelling the task stops the stream in flight and returns the partial report with
-  `wasCancelled`. It also cancels an in-process model's load: a download stops, while a load that cannot stop
-  partway finishes and the model is released without running.
+  `wasCancelled`. It also cancels an in-process model's load: an MLX download stops between files, while a GGUF download
+  and a load that cannot stop partway finish, and the model is released without running.
 
 ---
 

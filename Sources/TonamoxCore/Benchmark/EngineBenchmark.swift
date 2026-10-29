@@ -31,8 +31,8 @@ import MLX
 ///   listed twice gets its own markers.
 /// - Every candidate gets the same prompts, temperature and token budget.
 /// - Cancelling the task stops the stream in flight and returns the partial report. It also cancels an in-process
-///   model's load: a download stops, while a load that cannot stop partway finishes and the model is released
-///   without running.
+///   model's load: an MLX download stops between files, while a GGUF download and a load that cannot stop partway
+///   finish, and the model is released without running.
 ///
 /// A failed load or run is recorded in the report and the benchmark goes on.
 public struct EngineBenchmark: Sendable {

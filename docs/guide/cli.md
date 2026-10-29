@@ -264,7 +264,7 @@ tonamox bench --mlx qwen3_4b --all-servers --workload long --json > bench.json
   - **Memory** of an in-process engine is the `tonamox` process's peak `phys_footprint` (`FOOTPRINT`) and
     `resident_size` (`RESIDENT`) during that workload's measured runs, each with its growth over the process before
     the model loaded, e.g. `3.21 GB (+2.60)`. llama.cpp maps the GGUF file into memory: those pages count toward
-    `RESIDENT`, not `FOOTPRINT`. MLX copies its weights into memory that `FOOTPRINT` counts. So memory is not
+    `RESIDENT`, not `FOOTPRINT`. Which one counts MLX's Metal buffers has not been measured. So memory is not
     directly comparable between the two engines. A server runs in its own process and is not measured.
   - **Cold start** is the load time plus the warm-up run's time to first token: the wait from a cold start to the
     first token. A server's is its first request's time to first token, which includes loading the model only if

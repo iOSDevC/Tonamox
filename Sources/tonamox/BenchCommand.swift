@@ -287,8 +287,8 @@ extension TonamoxCLI {
         print("""
             FOOTPRINT (phys_footprint) and RESIDENT (resident_size) are the tonamox process's peaks during the \
             measured runs, with their growth over the process before the model loaded; servers run in their own \
-            process. llama.cpp maps GGUF weights from the file: RESIDENT counts them, FOOTPRINT does not. MLX copies \
-            its weights into memory that FOOTPRINT counts. Memory is not directly comparable between the two.
+            process. llama.cpp maps GGUF weights from the file: RESIDENT counts them, FOOTPRINT does not. Which one \
+            counts MLX's Metal buffers has not been measured. Memory is not directly comparable between the two.
             """)
     }
 
