@@ -184,6 +184,11 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   the models of detected local servers, with workload, run-count and temperature settings, progress and Cancel,
   and per-workload results that mark the fastest decode and time to first token and warn when the engines ran
   different models or a server may have cut the prompt, plus each engine's cold start.
+- `IncompatibleGGUFError` (`filename`, `blockers`, `underlyingMessage`): when llama.cpp fails to load a GGUF, the
+  llama.cpp backends read its first `ModelCompatibilityChecker.defaultGGUFHeaderBytes` (4 MiB) and, if
+  `gguf.architecture` (other than "not a chat model") or `gguf.qwen35-nextn` blocks it, throw this instead of
+  `LLMError.failedToLoad`. The blocker comes from the header alone; other failures keep their error, and a file that
+  loads is never checked.
 
 ### Changed
 
@@ -243,11 +248,9 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   oldest exchanges, as the first one does.
 - GGUF tool instructions listed the tools as JSON with its keys in a different order on every render; the keys are
   sorted now.
-- A GGUF that llama.cpp b8851 cannot load reported only "Failed to load model from file". When that load fails,
-  Tonamox reads the file's first 4 MiB and, if `gguf.architecture` or `gguf.qwen35-nextn` blocks it (an architecture
-  b8851 does not know, a `qwen35` MTP block that needs b9180), throws the new `IncompatibleGGUFError` with the rule's
-  title and detail and the original message, instead of `LLMError.failedToLoad`. Other failures keep their error,
-  and a file that loads is never checked.
+- A GGUF that llama.cpp b8851 cannot load reported only "Failed to load model from file". It now names the header's
+  blocker (an architecture b8851 does not know, a `qwen35` MTP block that needs b9180) through
+  `IncompatibleGGUFError` (see Added).
 
 ### Removed
 

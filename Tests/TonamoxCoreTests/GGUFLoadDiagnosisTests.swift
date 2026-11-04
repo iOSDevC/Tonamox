@@ -76,13 +76,14 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
                                           underlyingMessage: "Failed to load model: \(Self.loadFailure)")
 
         XCTAssertEqual(error.localizedDescription,
-                       "m.gguf cannot be loaded: MTP block breaks loading on b8851. Fixed in llama.cpp b9180. "
+                       "m.gguf failed to load. Its header shows a known blocker for the bundled llama.cpp: "
+                       + "MTP block breaks loading on b8851. Fixed in llama.cpp b9180. "
                        + "Underlying error: Failed to load model: \(Self.loadFailure)")
     }
 
     // MARK: - Loading through llama.cpp
 
-    func testLoadingANextNFileThrowsTheExplanation() async throws {
+    func testFailedLoadOfANextNHeaderIsExplained() async throws {
         let file = try write(Self.nextnHeader(), named: "Qwen3.8-27B-Q4_K_M.gguf")
 
         let error = await loadError(file)
@@ -93,6 +94,18 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
         for expected in ["Qwen3.8-27B-Q4_K_M.gguf", "b8851", "b9180", Self.loadFailure] {
             XCTAssertTrue(message.contains(expected), "\(expected) missing from: \(message)")
         }
+    }
+
+    func testFailedLoadOfANextNHeaderWithNativeToolCallsIsExplained() async throws {
+        let file = try write(Self.nextnHeader(chatTemplate: Self.nativeToolTemplate), named: "native tools.gguf")
+        let tools: [any LLMTool] = [NoOpTool()]
+        let plan = await GGUFTurnEngines.plan(url: file, tools: tools)
+        XCTAssertFalse(plan.ownsContext, "the load must go through LocalLLMClient's LlamaClient")
+
+        let error = await loadError(file, tools: tools)
+
+        let explained = try XCTUnwrap(error as? IncompatibleGGUFError, "got \(String(describing: error))")
+        XCTAssertEqual(explained.blockers.map(\.rule), ["gguf.qwen35-nextn"])
     }
 
     func testTruncatedGGUFOfAKnownArchitectureKeepsTheOriginalError() async throws {
@@ -110,14 +123,24 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// GGUF v3, no tensors: the three keys the nextn rule reads.
-    private static func nextnHeader() -> Data {
+    /// GGUF v3, no tensors: the three keys the nextn rule reads. llama.cpp rejects it for a missing hyperparameter,
+    /// not for the MTP block, so the load tests prove the wiring only.
+    private static func nextnHeader(chatTemplate: String? = nil) -> Data {
         var file = GGUFBytes()
         file.key("general.architecture", .string) { $0.string("qwen35") }
         file.key("qwen35.block_count", .uint32) { $0.int(UInt32(65)) }
         file.key("qwen35.nextn_predict_layers", .uint32) { $0.int(UInt32(1)) }
+        if let chatTemplate {
+            file.key("tokenizer.chat_template", .string) { $0.string(chatTemplate) }
+        }
         return file.encoded
     }
+
+    /// Supports tools but writes calls as `<call>name</call>`, not `<tool_call>` JSON.
+    private static let nativeToolTemplate = "{%- if tools %}{{- 'TOOLS|' }}{%- endif %}"
+        + "{%- for message in messages %}{%- if message.tool_calls %}{%- for tool_call in message.tool_calls %}"
+        + "{{- '<call>' + tool_call.function.name + '</call>' }}{%- endfor %}{%- else %}{{- message.content }}"
+        + "{%- endif %}{%- endfor %}"
 
     private static func header(architecture: String) -> GGUFBytes {
         var file = GGUFBytes()
@@ -142,13 +165,13 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
         return url
     }
 
-    private func loadError(_ file: URL) async -> (any Error)? {
+    private func loadError(_ file: URL, tools: [any LLMTool] = []) async -> (any Error)? {
         guard let model = Model.from(.localFile(file)) else {
             XCTFail("\(file.lastPathComponent) is not a local GGUF model")
             return nil
         }
         do {
-            try await LlamaCppBackend(model: model).load { _ in }
+            try await LlamaCppBackend(model: model, tools: tools).load { _ in }
             XCTFail("\(file.lastPathComponent) loaded")
             return nil
         } catch {
@@ -163,4 +186,13 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
         }
         XCTAssertEqual(reason, Self.loadFailure, file: file, line: line)
     }
+}
+
+private struct NoOpTool: LLMTool {
+    let name = "noop"
+    let description = "Does nothing."
+    struct Arguments: Decodable, ToolSchemaGeneratable {
+        static var argumentsSchema: LLMToolArgumentsSchema { [:] }
+    }
+    func call(arguments: Arguments) async throws -> ToolOutput { ToolOutput(data: [:]) }
 }

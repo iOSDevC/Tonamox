@@ -176,6 +176,8 @@ whole top-level quant.
 A local `.gguf` that llama.cpp b8851 fails to load (`bench --gguf`, `receipt --model`) is checked against the same
 `gguf.architecture` and `gguf.qwen35-nextn` rules offline: when one blocks it, the error names that blocker (for a
 `qwen35` MTP block, that it needs llama.cpp b9180) and ends with the original "Failed to load model from file".
+`gguf.architecture`'s "not a chat model" blocker is left out, since b8851 loads those architectures, so such a file
+keeps the original error ([details]({{ '/guide/models' | relative_url }}#what-it-checks)).
 
 ## Receipt fields (`tonamox receipt`)
 

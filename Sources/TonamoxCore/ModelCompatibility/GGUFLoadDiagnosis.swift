@@ -3,9 +3,10 @@ import LocalLLMClient
 
 // MARK: - IncompatibleGGUFError
 
-/// A GGUF the bundled llama.cpp failed to load, explained by a compatibility rule. Thrown in place of LocalLLMClient's
-/// generic "Failed to load model from file". A separate type rather than a ``TonamoxError`` case, like
-/// ``ModelDownloadError``, so exhaustive switches over ``TonamoxError`` keep compiling.
+/// A GGUF the bundled llama.cpp failed to load, with the compatibility blocker its header raises. Thrown in place of
+/// LocalLLMClient's generic "Failed to load model from file", which drops llama.cpp's own reason: the blocker comes
+/// from the header alone, so a file that is also broken in another way names it too. A separate type rather than a
+/// ``TonamoxError`` case, like ``ModelDownloadError``, so exhaustive switches over ``TonamoxError`` keep compiling.
 public struct IncompatibleGGUFError: LocalizedError, Equatable, Sendable {
     /// The file's name.
     public let filename: String
@@ -16,7 +17,8 @@ public struct IncompatibleGGUFError: LocalizedError, Equatable, Sendable {
 
     public var errorDescription: String? {
         let reasons = blockers.map { "\($0.title). \($0.detail)" }.joined(separator: " ")
-        return "\(filename) cannot be loaded: \(reasons) Underlying error: \(underlyingMessage)"
+        return "\(filename) failed to load. Its header shows a known blocker for the bundled llama.cpp: \(reasons) "
+            + "Underlying error: \(underlyingMessage)"
     }
 }
 

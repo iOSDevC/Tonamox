@@ -449,6 +449,13 @@ public enum ModelConfigurationError: LocalizedError, Equatable, Sendable {
     case invalidTemperature(Float)        // negative, infinite or NaN
     case invalidTopP(Float)               // outside 0 < topP <= 1, or NaN
 }
+
+// Separate from TonamoxError so exhaustive switches over it keep compiling.
+public struct IncompatibleGGUFError: LocalizedError, Equatable, Sendable {
+    let filename: String
+    let blockers: [CompatibilityFinding]  // gguf.architecture / gguf.qwen35-nextn, read from the file's header
+    let underlyingMessage: String         // LocalLLMClient's "Failed to load model from file"
+}
 ```
 
 `load` checks `tools` and the sampling values first and throws `ModelConfigurationError` before
@@ -463,6 +470,11 @@ and evicts the least recently used to make room. On iOS, where `HardwareProfile.
 memory limit, it also evicts least-recently-used models until the new one is no longer `.tooLarge` beside the
 ones that stay
 ([Memory Management]({{ '/guide/memory' | relative_url }})).
+
+When llama.cpp fails to load a GGUF whose header a `gguf.architecture` or `gguf.qwen35-nextn` rule blocks (other
+than "not a chat model"), `load` throws `IncompatibleGGUFError` instead of LocalLLMClient's `LLMError.failedToLoad`,
+as do the `Tonamox` factories; `EngineBenchmark` stores its message in `loadError`. The blocker comes from the header
+alone, not from llama.cpp's own reason ([details]({{ '/guide/models' | relative_url }}#what-it-checks)).
 
 {: .warning }
 > `tools` run on GGUF models and MLX text models. With an MLX vision or document model, or any MLX model in the iOS
@@ -937,8 +949,9 @@ print(report.status.label, report.headline)
 public struct ModelCompatibilityChecker: Sendable {
     init(transport: URLSession = .shared,
          authorizer: any DownloadAuthorizing = KeychainDownloadAuth(),   // HF token: Keychain account "download.huggingface"
-         ggufHeaderBytes: Int = 4 << 20,
+         ggufHeaderBytes: Int = ModelCompatibilityChecker.defaultGGUFHeaderBytes,
          requestTimeout: TimeInterval = 60)
+    static let defaultGGUFHeaderBytes: Int   // 4 MiB; also read from a local GGUF that llama.cpp failed to load
 
     // ggufFile: the GGUF whose header is read when the repo lists it; else the smallest whole top-level quant
     func check(_ repo: String, on target: DevicePreset = .thisDevice(), ggufFile: String? = nil) async -> CompatibilityReport
