@@ -588,9 +588,9 @@ else, they fail to load with an error), and "this device" reports the Mac's memo
   (server timings are taken by the app). ≈ marks estimated token counts, and prefill speeds that are prompt tokens
   over the time to first token (everything but MLX). With two or more engines, **Fastest decode** and **Fastest
   first token** are marked. `modelsDiffer(in:)` and `promptTruncationSuspects(in:)` add warnings. **About these
-  numbers** says that time to first token is the figure to compare across engines, and that llama.cpp's mapped
-  GGUF weights count toward resident but not footprint, and that which one counts MLX's Metal buffers has not
-  been measured, so memory is not directly comparable between the two.
+  numbers** says that time to first token is the figure to compare across engines, and that neither memory figure
+  includes all of the weights (on an M1 Pro a 15.2 GB GGUF grew footprint by 0.77 GB and resident by 2.96 GB; MLX
+  was not measured), so memory is not directly comparable between the two.
 
 ---
 

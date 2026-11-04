@@ -408,8 +408,9 @@ print(report.fastestDecode(in: "chat")?.label ?? "no result", report.modelsDiffe
   an in-process MLX model, which times prefill itself; elsewhere prefill tok/s is prompt tokens over the time to
   first token (llama.cpp in process: an estimated count; servers: client-side, HTTP included). `BenchmarkMemory`
   holds `footprintBytes` (`phys_footprint`) and `residentBytes` (`resident_size`) of this process, servers not
-  measured: llama.cpp maps the GGUF file, whose pages count toward resident but not footprint, and which one counts
-  MLX's Metal buffers has not been measured, so neither figure alone compares the two engines.
+  measured. Neither includes all of the weights: on an M1 Pro a 15.2 GB GGUF grew footprint by 0.77 GB and resident
+  by 2.96 GB, and which one counts MLX's Metal buffers has not been measured, so neither figure alone compares the
+  two engines.
 - **JSON.** The report is `Codable`. `OutputAgreement` encodes as `{"kind": "partial", "commonPrefixRatio": 0.82}`
   (`kind`: `reference`, `exact`, `partial`, `notApplicable`, `unavailable`), and a `BenchmarkRun` also encodes its
   `decodeTokensPerSecond` and `prefillTokensPerSecond`, which decoding recomputes.

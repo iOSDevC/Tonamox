@@ -109,9 +109,9 @@ public enum BenchmarkTiming: String, Codable, Sendable, Hashable {
 
 /// One reading of this process's memory, or the peak of each figure over a stretch of readings.
 ///
-/// The two figures count a model's weights differently, so neither compares llama.cpp with MLX on its own:
-/// llama.cpp maps a GGUF file into memory, and its clean file-backed pages count toward ``residentBytes`` but not
-/// ``footprintBytes``. Which figure counts MLX's Metal buffers has not been measured.
+/// Neither figure includes all of a model's weights, so neither compares llama.cpp with MLX on its own. llama.cpp
+/// maps the GGUF file for Metal: on an M1 Pro a 15.2 GB GGUF grew footprint by 0.77 GB and resident by 2.96 GB.
+/// Which figure counts MLX's Metal buffers has not been measured.
 public struct BenchmarkMemory: Codable, Sendable, Hashable {
     /// `phys_footprint`: what iOS counts toward an app's memory limit.
     public let footprintBytes: Int

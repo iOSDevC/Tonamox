@@ -365,9 +365,9 @@ struct EngineCompareView: View {
                  + "token (llama.cpp in this app, and servers); only MLX times prefill itself.\n\n"
                  + "Footprint (phys_footprint) and resident (resident_size) are this app's peaks during the measured "
                  + "runs, with their growth over the app before the model loaded; a server runs in its own process "
-                 + "and is not measured. llama.cpp maps a GGUF file into memory, which resident counts and footprint "
-                 + "does not; which one counts MLX's Metal buffers has not been measured. So memory is not directly "
-                 + "comparable between the two.")
+                 + "and is not measured. Neither figure includes all of the weights: on an M1 Pro a 15.2 GB GGUF grew "
+                 + "footprint by 0.77 GB and resident by 2.96 GB, and which one counts MLX's Metal buffers has not been "
+                 + "measured. So memory is not directly comparable between the two.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
