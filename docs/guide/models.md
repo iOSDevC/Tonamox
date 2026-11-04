@@ -435,6 +435,12 @@ decides it. Any blocker means **Won't run**.
 `mlx.tokenizer`, `gguf.header`, `gguf.projector` and `context` add caveats and context (missing tokenizer files,
 unreadable headers, an ignored mmproj, trained contexts below 32768 tokens) but never block.
 
+The same `gguf.architecture` and `gguf.qwen35-nextn` blockers explain a local GGUF that fails to load. When
+llama.cpp rejects the file (LocalLLMClient's "Failed to load model from file"), the llama.cpp backends read its first
+4 MiB and, if one of the two rules blocks it, throw `IncompatibleGGUFError` with the blocker's title and detail
+and the original message; `gguf.architecture`'s "not a chat model" blocker is left out, since b8851 loads those
+architectures. Other failures keep their original error, and a file that loads is never checked.
+
 Fit uses the existing `HardwareAnalyzer` math: weights + runtime overhead + a GQA-aware KV cache at 2048 tokens,
 with `kvHeads` / `headDim` from `config.json` or the GGUF header and the cache per layer type described in
 [KV cache per layer type and mixtures of experts](#kv-cache-per-layer-type-and-mixtures-of-experts). A `kv` finding

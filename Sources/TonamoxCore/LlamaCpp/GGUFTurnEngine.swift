@@ -102,13 +102,17 @@ enum GGUFTurnEngines {
 
     private static func engine(url: URL, parameter: LlamaClient.Parameter, plan: Plan) async throws
         -> any GGUFTurnEngine {
-        if plan.ownsContext {
-            let core = try await LlamaTurnCore.load(url: url, parameter: parameter, boundaries: plan.boundaries)
-            return LlamaTurnEngine(renderer: plan.renderer, core: core)
+        do {
+            if plan.ownsContext {
+                let core = try await LlamaTurnCore.load(url: url, parameter: parameter, boundaries: plan.boundaries)
+                return LlamaTurnEngine(renderer: plan.renderer, core: core)
+            }
+            let client = try await LlamaToolTurnEngine.makeClient(url: url, parameter: parameter,
+                                                                  tools: plan.renderer.tools)
+            return LlamaToolTurnEngine(url: url, parameter: parameter, renderer: plan.renderer, client: client)
+        } catch {
+            throw await GGUFLoadDiagnosis.explained(error, loading: url)
         }
-        let client = try await LlamaToolTurnEngine.makeClient(url: url, parameter: parameter,
-                                                              tools: plan.renderer.tools)
-        return LlamaToolTurnEngine(url: url, parameter: parameter, renderer: plan.renderer, client: client)
     }
 
     /// What picking an engine needs from the file.

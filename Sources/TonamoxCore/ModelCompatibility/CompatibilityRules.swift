@@ -22,6 +22,16 @@ struct RuleInput: Sendable {
         ggufCache = weightFormat == .gguf ? snapshot.ggufMetadata.flatMap(KVCacheLayout.derive(gguf:)) : nil
     }
 
+    /// A local GGUF file. The parsed magic already proves the format, so no repository listing is needed.
+    init(localGGUF header: GGUFHeader, path: String, target: DevicePreset) {
+        source = RepoSnapshot(repoID: path, ggufMetadata: header, ggufSamplePath: path)
+        self.target = target
+        weightFormat = .gguf
+        tensorNames = nil
+        quantGroups = []
+        ggufCache = KVCacheLayout.derive(gguf: header)
+    }
+
     var listing: HFRepoInfo? { source.listing }
     var files: [RepoFile] { source.listing?.files ?? [] }
     var settings: ModelConfigFacts? { source.configuration }

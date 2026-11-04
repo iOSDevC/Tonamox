@@ -24,10 +24,12 @@ public struct ModelCompatibilityChecker: Sendable {
     /// Shards whose headers are read to size a mixture of experts' tensors; larger repos keep the dense estimate.
     static let maxExpertHeaders = 64
     static let safetensorsProbeBytes = 256 << 10
+    /// The default ``ggufHeaderBytes``; also what is read from a local GGUF that llama.cpp failed to load.
+    public static let defaultGGUFHeaderBytes = 4 << 20
 
     public init(transport: URLSession = .shared,
                 authorizer: any DownloadAuthorizing = KeychainDownloadAuth(),
-                ggufHeaderBytes: Int = 4 << 20,
+                ggufHeaderBytes: Int = ModelCompatibilityChecker.defaultGGUFHeaderBytes,
                 requestTimeout: TimeInterval = 60) {
         self.transport = transport
         self.authorizer = authorizer

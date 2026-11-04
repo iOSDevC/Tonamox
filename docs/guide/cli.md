@@ -173,6 +173,10 @@ whole top-level quant.
 `--device` defaults to `this-device` (see `tonamox models devices`); `--limit` defaults to 15 (1–100).
 `search` and `check` query huggingface.co, so they need a network connection.
 
+A local `.gguf` that llama.cpp b8851 fails to load (`bench --gguf`, `receipt --model`) is checked against the same
+`gguf.architecture` and `gguf.qwen35-nextn` rules offline: when one blocks it, the error names that blocker (for a
+`qwen35` MTP block, that it needs llama.cpp b9180) and ends with the original "Failed to load model from file".
+
 ## Receipt fields (`tonamox receipt`)
 
 A harness for measuring how well a local model reads receipts. `VisionDocumentTool` reads the image, and the

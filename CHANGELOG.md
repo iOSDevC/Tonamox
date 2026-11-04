@@ -243,6 +243,11 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   oldest exchanges, as the first one does.
 - GGUF tool instructions listed the tools as JSON with its keys in a different order on every render; the keys are
   sorted now.
+- A GGUF that llama.cpp b8851 cannot load reported only "Failed to load model from file". When that load fails,
+  Tonamox reads the file's first 4 MiB and, if `gguf.architecture` or `gguf.qwen35-nextn` blocks it (an architecture
+  b8851 does not know, a `qwen35` MTP block that needs b9180), throws the new `IncompatibleGGUFError` with the rule's
+  title and detail and the original message, instead of `LLMError.failedToLoad`. Other failures keep their error,
+  and a file that loads is never checked.
 
 ### Removed
 
