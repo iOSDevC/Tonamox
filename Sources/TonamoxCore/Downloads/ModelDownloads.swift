@@ -93,13 +93,27 @@ public enum ModelDownloads {
                            fallbackRoots: ModelStorage.fallbackRoots, progress: progress)
     }
 
-    /// Removes the model's files, finished and partial, from the storage root and from Caches. GGUF: the file, then
-    /// its empty `<org>/<repo>` folders; MLX: the whole `models--<org>--<repo>` folder (in Caches only its
-    /// `snapshots/main`, since a Hugging Face cache there may hold the same repo). Unload the model first
-    /// (``ModelManager/evict(_:)``).
+    /// Removes the model's files, finished and partial, from the storage root, from the app's private root when
+    /// storage is shared through an App Group, and from Caches. GGUF: the file, then its empty `<org>/<repo>`
+    /// folders; MLX: the whole `models--<org>--<repo>` folder (in Caches only its `snapshots/main`, since a Hugging
+    /// Face cache there may hold the same repo). Unload the model first (``ModelManager/evict(_:)``).
+    ///
+    /// Throws ``ModelFilesInUseError`` without deleting anything while a download, in this process or another,
+    /// writes the model.
     public static func delete(_ model: Model) throws {
-        try delete(model, root: storageRoot)
-        for legacyRoot in ModelStorage.fallbackRoots {
+        try delete(model, root: storageRoot, ownedFallbackRoots: ModelStorage.ownedFallbackRoots,
+                   legacyRoot: ModelStorage.legacyRoot)
+        TonamoxSharedStorage.postChange(.models)
+    }
+
+    /// Everything in `root` and `ownedFallbackRoots`, only Tonamox's part in `legacyRoot`, under `root`'s lock.
+    static func delete(_ model: Model, root: URL, ownedFallbackRoots: [URL], legacyRoot: URL) throws {
+        let target = try downloadLockTarget(for: model, root: root)
+        try whileNotDownloading(target, removingEmptyFoldersUpTo: modelsRoot(root)) {
+            try delete(model, root: root)
+            for ownedRoot in ownedFallbackRoots {
+                try delete(model, root: ownedRoot)
+            }
             try deleteLegacy(model, root: legacyRoot)
         }
     }
@@ -122,6 +136,39 @@ public enum ModelDownloads {
     }
 
     // MARK: Paths
+
+    /// The path whose ``DownloadFileLock`` a download of `model` holds: the GGUF file or the snapshot folder.
+    static func downloadLockTarget(for model: Model, root: URL) throws -> URL {
+        switch model.format {
+        case .gguf: try ggufTarget(for: model, root: root).file
+        case .mlx: snapshotDirectory(repoID: model.repoID, root: root)
+        }
+    }
+
+    /// Runs `body` while holding `destination`'s download lock, taken without waiting. With `emptyFoldersRoot`, then
+    /// removes the folders above `destination` that are left empty, up to that root.
+    package static func whileNotDownloading<T>(_ destination: URL,
+                                               removingEmptyFoldersUpTo emptyFoldersRoot: URL? = nil,
+                                               _ body: () throws -> T) throws -> T {
+        let result: T
+        switch try DownloadFileLock.attempt(for: destination) {
+        case .absent:
+            return try body()
+        case .busy:
+            throw ModelFilesInUseError(name: destination.lastPathComponent)
+        case .held(let lock):
+            do {
+                defer { lock.release() }
+                result = try body()
+            }
+        }
+        // Only now: the lock file kept its folder from being empty until the release unlinked it.
+        if let emptyFoldersRoot {
+            removeEmptyFolders(from: destination.deletingLastPathComponent(), upTo: emptyFoldersRoot,
+                               fileManager: .default)
+        }
+        return result
+    }
 
     static func modelsRoot(_ root: URL) -> URL {
         root.appendingPathComponent("models")
@@ -274,6 +321,7 @@ public enum ModelDownloads {
                                      repoID: model.repoID, path: path) { bytes in
                 progress(bytes, total)
             }
+            TonamoxSharedStorage.postChange(.models)
             return target.file
         }
     }
@@ -336,6 +384,7 @@ public enum ModelDownloads {
             progress(total, total)
             if patterns.contains("*.safetensors") {
                 FileManager.default.createFile(atPath: marker.path, contents: Data())
+                TonamoxSharedStorage.postChange(.models)
             }
             return directory
         }

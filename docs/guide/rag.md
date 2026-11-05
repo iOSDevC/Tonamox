@@ -193,8 +193,8 @@ bundle unless Core ML matches sentence-transformers (cosine ≥ 0.999 on `CPU_ON
 `CPU_AND_NE`), and cleans up its downloads. Details: [`scripts/embeddings/README.md`](https://github.com/iOSDevC/Tonamox/blob/development/scripts/embeddings/README.md).
 
 **Install it** by copying the folder to `AutoEmbeddingProvider.defaultModelBundleURL`
-(`Application Support/AuraLocal/embeddings/multilingual-e5-small`), or with **Import embedding
-model…** in `DocsTab`.
+(`Application Support/AuraLocal/embeddings/multilingual-e5-small`, in the App Group's container once
+`TonamoxSharedStorage.configure(appGroup:)` applied one), or with **Import embedding model…** in `DocsTab`.
 
 ### Using the model without TonamoxDocs
 
@@ -250,6 +250,49 @@ whenever its vectors change (another model, another version).
 Two screens sharing one library should not both call `configure`: the second call switches the
 vector space under the first. `configureIfNeeded(embeddingProvider:llm:visionLLM:)` keeps a provider
 that is already set.
+
+---
+
+## Where the library is stored
+
+`DocumentLibrary.shared`, like any `DocumentLibrary(directory: nil)`, keeps its index at
+`<Application Support>/Tonamox/docs/vectors.sqlite`. `DocumentLibrary(directory:)` takes another folder.
+
+### Sharing the library between apps
+
+With `TonamoxSharedStorage.configure(appGroup:)` (see
+[Sharing storage between apps]({{ '/guide/models' | relative_url }}#sharing-storage-between-apps-app-group)), the
+default index and the e5 bundle live in the App Group's container on iOS, and in a sandboxed Mac app entitled to
+the group. Every app of the group then searches one library. On a Mac without App Sandbox they stay in
+`~/Library/Application Support`, which is already user-wide.
+
+- **Existing indexes are copied, not moved.** Before the shared index is first opened in a process, the app's
+  private index is snapshotted read-only. Two private indexes are checked: `Tonamox/docs/vectors.sqlite`, and
+  `AuraLocal/docs/vectors.sqlite`, the default before the rename to Tonamox, which nothing reads otherwise. If
+  the group has no index yet, the first snapshot becomes it. Otherwise the private documents and their chunks are
+  added with `INSERT OR IGNORE`. A document the shared index already has keeps the shared chunks. A
+  `vectors.sqlite.merged-into-group` marker next to the private file then stops any later merge. The private file
+  is never changed.
+- **Only matching vectors merge.** A private index with chunks merges only when it was built with the same
+  embedding model as the shared one (`identifier` and `dimensions`), or when the shared index has no chunks; the
+  shared index then takes over the private identity. Otherwise the private index stays private. The log says so,
+  and the check runs again on the next launch. For example, an index built with TF-IDF in one app does not merge
+  into an e5 index built by another.
+- **The e5 bundle** (`AuraLocal/embeddings/multilingual-e5-small`) moves into the group as a whole, unless the group
+  already has one; the private bundle then stays and is not read. The compiled model is cached per app
+  (`Caches/AuraLocal/CompiledModels`), so each app compiles an `.mlpackage` bundle once for itself.
+- **Change signal.** `add` (a new document), `removeDocument` and a re-embed post
+  `TonamoxSharedStorage.didChangeNotification` with `.documents`. `DocsTab` reloads its list on it, and posts
+  `.models` after **Import embedding model…**.
+- **In the background** (iOS and iPadOS). The shared index closes its idle connection when the app enters the
+  background. Until the app returns, each call opens, runs inside its own background task and closes the database.
+  The library also forgets which embedding identity it last matched, because another app may have re-embedded the
+  index meanwhile. It checks again on the next `add` or `ask`.
+
+Limits: while two apps are in the foreground, one does not notice the other's re-embed until it has been in the
+background. A document's `url` is the file it was indexed from, which another app may not be able to open; it
+answers from the stored chunks. Without `configure`, an index left in `AuraLocal/docs` by an earlier build is still
+not read.
 
 ---
 
@@ -332,8 +375,9 @@ TabView {
 - Per-document indexing progress with percentage
 - Swipe-to-delete
 - Full chat sheet with expandable source citations
-- multilingual-e5-small when its bundle is installed at `Application Support/AuraLocal/embeddings/multilingual-e5-small`
-  (warmed up before the tab reports ready), TF-IDF otherwise; the backend in use is shown under the list
+- multilingual-e5-small when its bundle is installed at `AutoEmbeddingProvider.defaultModelBundleURL`
+  (`Application Support/AuraLocal/embeddings/multilingual-e5-small`; warmed up before the tab reports ready), TF-IDF
+  otherwise; the backend in use is shown under the list
 - **Import embedding model…** (toolbar): pick a bundle folder, it is copied into place and the index
   is re-embedded with progress
 

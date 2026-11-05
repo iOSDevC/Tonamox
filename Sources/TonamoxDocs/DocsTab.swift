@@ -27,6 +27,7 @@ public struct DocsTab: View {
     @State private var pendingImport   = ImportKind.documents
     @State private var showChat        = false
     @State private var showExportSheet = false
+    @Environment(\.scenePhase) private var scenePhase
     private let autoDownload: Bool
 
     /// - Parameter autoDownload: download missing models as soon as the tab appears, without asking, as the tab did
@@ -106,6 +107,14 @@ public struct DocsTab: View {
                 ExportSheet(vm: vm)
             }
             .task { await vm.setup(autoDownload: autoDownload) }
+            .onReceive(NotificationCenter.default.publisher(for: TonamoxSharedStorage.didChangeNotification)) { note in
+                guard TonamoxSharedStorage.change(of: note) == .documents else { return }
+                Task { await vm.reloadDocuments() }
+            }
+            // A suspended app misses the change signals of the other apps of the group.
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await vm.reloadDocuments() } }
+            }
         }
     }
     
@@ -609,6 +618,20 @@ final class DocsViewModel: ObservableObject {
         }
     }
 
+    /// Another app of the group (or another screen) changed the shared library.
+    func reloadDocuments() async {
+        guard isSetUp, !isIndexing else { return }
+        guard let stored = try? await library.allDocuments() else { return }
+        // This app's own adds and removes already updated both; re-reading every chunk is slow on a large library.
+        guard Self.contentsKey(stored) != Self.contentsKey(documents) else { return }
+        documents = stored
+        await library.refreshCorpus()
+    }
+
+    private static func contentsKey(_ list: [IndexedDocument]) -> [UUID: Int] {
+        Dictionary(list.map { ($0.id, $0.chunkCount) }) { first, _ in first }
+    }
+
     // MARK: - Embedding model
 
     /// multilingual-e5-small when its bundle is installed and loads, TF-IDF otherwise.
@@ -652,6 +675,7 @@ final class DocsViewModel: ObservableObject {
             try await Task.detached {
                 try Self.installBundle(from: folder, to: AutoEmbeddingProvider.defaultModelBundleURL)
             }.value
+            TonamoxSharedStorage.postChange(.models)
             try await useEmbedder(await makeEmbedder(), llm: llm, vlm: vlm)
             progress = "Ready - \(embeddingBackend)"
         } catch {

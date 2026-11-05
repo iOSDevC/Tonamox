@@ -611,6 +611,7 @@ struct TonamoxHFDownloader: Downloader {
         }
         try Data().write(to: completionMarker, options: .atomic)
         Self.log.info("snapshot complete — \(aggregated / 1_000_000) MB · marker written")
+        TonamoxSharedStorage.postChange(.models)
         return dir
     }
 

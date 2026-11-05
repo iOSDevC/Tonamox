@@ -507,6 +507,25 @@ engines**, which times the downloaded models and any local llama-server, Ollama 
 Stable Diffusion after a one-time ~1.07 GB download, and offers Apple's Image Playground, asking before each use
 from iOS 27, when it runs on Apple's servers.
 
+Next to TonamoxExample, the same Xcode project (`Sources/TonamoxExample/TonamoxExample.xcodeproj`) holds four smaller
+apps built from the Example's feature folders. Each app has its own shared scheme:
+
+| Scheme | Bundle ID | Platforms | What it is |
+|--------|-----------|-----------|------------|
+| `TonamoxExample` | `io.iosdevc.AuraExample` | iOS, macOS | every tab above |
+| `TonamoxChat` | `io.iosdevc.TonamoxChat` | iOS, macOS | Chat and Voice (+ Settings on iOS) |
+| `TonamoxImage` | `io.iosdevc.TonamoxImage` | iOS, macOS | Image (+ Settings on iOS) |
+| `TonamoxLibrary` | `io.iosdevc.TonamoxLibrary` | iOS, macOS | Library, `DocsTab` (+ Settings on iOS) |
+| `TonamoxTerminal` | `io.iosdevc.TonamoxTerminal` | iOS only | read-only list of the shared models, storage scope and token state |
+
+Each app calls `TonamoxSharedStorage.configure(appGroup: "group.io.iosdevc.tonamox")` first. Their iOS builds
+carry that App Group, so on one iPhone they share models, records, conversations, the document library and the
+keys saved in Settings. The first launch of a build with the group moves the Example's downloaded models into the
+group container, so an Example build from a branch without this change no longer sees them on that device. Its
+conversations, records and keys stay. The Mac builds carry no App Group and share the user-wide folders, as before.
+`scripts/build-app.sh` packages only `TonamoxExample`. See
+[Sharing storage between apps](docs/guide/models.md#sharing-storage-between-apps-app-group).
+
 ### Model Finder (`Examples/ModelFinder`)
 
 A small iOS 18 / macOS 15 app that searches Hugging Face and shows, per repo, whether Tonamox's pinned
@@ -1170,6 +1189,12 @@ folder is inside the app container; a non-sandboxed macOS process (the `tonamox`
 Caches still load from there; a sandboxed app moves them over on first use (rename only, never a copy or an
 overwrite), and a non-sandboxed Mac app can call `ModelStorage.migrateLegacyDownloads()`.
 
+Apps of one App Group can share models, download records, conversations, the document library and (on iOS) keys:
+call `TonamoxSharedStorage.configure(appGroup:)` first in `App.init`. On iOS the data then lives in the group
+container. The app's own models are moved there by rename, and everything else is copied, with the app's own copy
+kept. A Mac app without App Sandbox keeps its user-wide folders and shares only its records through a file there.
+See [Sharing storage between apps](docs/guide/models.md#sharing-storage-between-apps-app-group).
+
 Each downloaded LFS file is hashed and compared with the SHA-256 Hugging Face publishes for it before it is moved
 into place; a mismatch deletes it and throws `ModelIntegrityError.checksumMismatch`. See
 [Where models are stored](docs/guide/models.md#where-models-are-stored) and
@@ -1308,13 +1333,16 @@ Sources/
 ├── TonamoxAppleIntelligence/
 ├── TonamoxImageGen/
 ├── tonamox/                   (CLI)
-└── TonamoxExample/
+└── TonamoxExample/            (TonamoxExample.xcodeproj: the TonamoxExample, TonamoxChat, TonamoxImage,
+                                TonamoxLibrary and TonamoxTerminal apps; feature folders Chat, Voice, Image,
+                                Models, Hybrid, ML, Agents, Terminal, shared by them with Common and CommonUI)
 
 Examples/
 └── ModelFinder/
 
-Downloaded models live under ModelStorage.rootDirectory (<Application Support>/AuraLocal/Models;
-~/Library/Application Support/AuraLocal/Models for a non-sandboxed Mac process):
+Downloaded models live under ModelStorage.rootDirectory (<Application Support>/AuraLocal/Models, in the App Group
+container once TonamoxSharedStorage.configure(appGroup:) applied one; ~/Library/Application Support/AuraLocal/Models
+for a non-sandboxed Mac process):
   MLX:  <root>/huggingface/hub/models--<org>--<repo>/snapshots/main/
   GGUF: <root>/models/<org>/<repo>/<file>.gguf
 ```

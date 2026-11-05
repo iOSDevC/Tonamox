@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SQLite3
 import TonamoxCore
 
@@ -28,24 +29,50 @@ actor VectorStore {
 
     private var db: OpaquePointer?
     private let dbURL: URL
+    /// The app's private indexes, merged into ``dbURL`` once when storage is shared.
+    private let legacyURLs: [URL]
+    private let suspension: SharedStorageSuspension
+    private let registersForSuspension: Bool
+    private var suspensionHandlerID: UUID?
+    private var legacyHandled = false
     /// Warm cache: recently-accessed embeddings keyed by chunk ID.
     /// Populated on demand during search, not loaded all-at-once.
     private var embeddingCache: [UUID: [Float]] = [:]
 
+    static let log = Logger(subsystem: "dev.auralocal", category: "SharedStorage")
+
     // MARK: - Init
 
-    init(directory: URL) {
+    /// `suspension` non-`nil` registers a handler that closes the connection when the app enters the background.
+    init(directory: URL, legacyDirectories: [URL] = [], suspension: SharedStorageSuspension? = nil) {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        self.dbURL = directory.appendingPathComponent("vectors.sqlite")
+        self.dbURL = directory.appending(path: "vectors.sqlite")
+        self.legacyURLs = legacyDirectories.map { $0.appending(path: "vectors.sqlite") }
+        self.suspension = suspension ?? .live
+        self.registersForSuspension = suspension != nil
+    }
+
+    deinit {
+        if let suspensionHandlerID { suspension.removeHandler(suspensionHandlerID) }
     }
 
     // MARK: - Lifecycle
 
     func open() throws {
+        try withDatabase {}
+    }
+
+    private func openConnection() throws {
         guard db == nil else { return }
-        guard sqlite3_open(dbURL.path, &db) == SQLITE_OK else {
-            throw DocumentError.embeddingFailed("Cannot open vector store at \(dbURL.path)")
+        handOffLegacyIndexesOnce()
+        registerForSuspensionOnce()
+        let path = dbURL.path(percentEncoded: false)
+        guard sqlite3_open(path, &db) == SQLITE_OK else {
+            close()
+            throw DocumentError.embeddingFailed("Cannot open vector store at \(path)")
         }
+        // Another app of the group may hold the lock; set before the WAL switch, which needs it too.
+        sqlite3_busy_timeout(db, SQLiteHandoff.busyTimeoutMilliseconds)
         // WAL mode enables concurrent reads during writes
         sqlite3_exec(db, "PRAGMA journal_mode = WAL;", nil, nil, nil)
         sqlite3_exec(db, "PRAGMA synchronous = NORMAL;", nil, nil, nil)
@@ -64,95 +91,192 @@ actor VectorStore {
         embeddingCache = [:]
     }
 
+    /// Opens the database for `body`. While the app is in the background, the call also runs inside its own
+    /// background task and closes the database before returning.
+    private func withDatabase<T>(_ body: () throws -> T) throws -> T {
+        try suspension.performInBackgroundTask(named: "Tonamox documents") {
+            try openConnection()
+            defer { if suspension.isSuspended { close() } }
+            return try body()
+        }
+    }
+
+    private func registerForSuspensionOnce() {
+        guard registersForSuspension, suspensionHandlerID == nil else { return }
+        suspensionHandlerID = suspension.addHandler { [weak self] in
+            await self?.closeForSuspension()
+        }
+    }
+
+    private func closeForSuspension() {
+        guard db != nil else { return }
+        close()
+        Self.log.info("vectors.sqlite closed for suspension")
+    }
+
+    var isOpen: Bool { db != nil }
+
+    func busyTimeout() throws -> Int {
+        try withDatabase {
+            try query("PRAGMA busy_timeout;") { Int(sqlite3_column_int64($0, 0)) }.first ?? 0
+        }
+    }
+
+    // MARK: - Legacy indexes
+
+    private static let identityKeys = [providerKey, dimensionsKey]
+
+    /// Runs before the shared file is first opened here, so a missing shared file can become the first private copy.
+    private func handOffLegacyIndexesOnce() {
+        guard !legacyHandled else { return }
+        legacyHandled = true
+        // Chunks first and only for documents the shared index lacks: a file indexed on both sides keeps one copy.
+        let tables = [
+            SQLiteHandoff.Table("chunks", filter: "document_id NOT IN (SELECT id FROM main.documents)"),
+            SQLiteHandoff.Table("documents"),
+        ]
+        for legacy in legacyURLs {
+            SQLiteHandoff.handOff(legacy: legacy, into: dbURL, tables: tables, decide: Self.mergeDecision)
+        }
+    }
+
+    /// Vectors from another embedding model would poison the search, so the rows merge only into an index of the
+    /// same identity, or into one without chunks, which then takes over the legacy identity.
+    static func mergeDecision(legacy: SQLiteHandoff.Database,
+                              shared: SQLiteHandoff.Database) throws -> SQLiteHandoff.Decision {
+        guard try chunkCount(in: legacy) > 0 else { return .merge(then: nil) }
+        let legacyIdentity = try identity(in: legacy)
+        let sharedIdentity = try identity(in: shared)
+        if legacyIdentity == sharedIdentity { return .merge(then: nil) }
+        guard try chunkCount(in: shared) == 0 else {
+            return .keep(reason: """
+                embedding identity \(legacyIdentity?.identifier ?? "none") differs from the shared \
+                \(sharedIdentity?.identifier ?? "none")
+                """)
+        }
+        return .merge(then: adoptIdentity)
+    }
+
+    private static func adoptIdentity(legacy: SQLiteHandoff.Database, shared: SQLiteHandoff.Database) throws {
+        try shared.execute("DELETE FROM \(shared.schema).metadata WHERE key IN (?, ?);", bindings: identityKeys)
+        guard try legacy.tableExists("metadata") else { return }
+        try shared.execute("""
+            INSERT INTO \(shared.schema).metadata (key, value)
+            SELECT key, value FROM \(legacy.schema).metadata WHERE key IN (?, ?);
+            """, bindings: identityKeys)
+    }
+
+    private static func chunkCount(in database: SQLiteHandoff.Database) throws -> Int {
+        guard try database.tableExists("chunks") else { return 0 }
+        return try database.integer("SELECT count(*) FROM \(database.schema).chunks;")
+    }
+
+    private static func identity(in database: SQLiteHandoff.Database) throws -> EmbeddingIndexIdentity? {
+        guard try database.tableExists("metadata") else { return nil }
+        let sql = "SELECT value FROM \(database.schema).metadata WHERE key = ?;"
+        guard let identifier = try database.text(sql, bindings: [providerKey]),
+              let dimensions = try database.text(sql, bindings: [dimensionsKey]).flatMap({ Int($0) })
+        else { return nil }
+        return EmbeddingIndexIdentity(identifier: identifier, dimensions: dimensions)
+    }
+
     // MARK: - Document management
 
     func document(id: UUID) throws -> DocumentRow? {
-        try ensureOpen()
-        return try query(
-            "SELECT id, title, url, chunk_count, indexed_at FROM documents WHERE id = ?;",
-            bindings: [id.uuidString],
-            map: rowToDocument
-        ).first
+        return try withDatabase {
+            return try query(
+                "SELECT id, title, url, chunk_count, indexed_at FROM documents WHERE id = ?;",
+                bindings: [id.uuidString],
+                map: rowToDocument
+            ).first
+        }
     }
 
     /// The document stored under `url` that ``preferredDocumentOrder`` ranks first, e.g. one indexed by a
     /// version whose IDs changed every launch.
     func newestDocument(url: String) throws -> DocumentRow? {
-        try ensureOpen()
-        return try query(
-            "SELECT id, title, url, chunk_count, indexed_at FROM documents WHERE url = ? ORDER BY \(Self.preferredDocumentOrder) LIMIT 1;",
-            bindings: [url],
-            map: rowToDocument
-        ).first
+        return try withDatabase {
+            return try query(
+                "SELECT id, title, url, chunk_count, indexed_at FROM documents WHERE url = ? ORDER BY \(Self.preferredDocumentOrder) LIMIT 1;",
+                bindings: [url],
+                map: rowToDocument
+            ).first
+        }
     }
 
     /// Whether a document that should have chunks has none stored. Older versions stored a document and its
     /// chunks in separate writes, so indexing interrupted between the two left such a document.
     func chunksAreMissing(for row: DocumentRow) throws -> Bool {
         guard row.chunkCount > 0 else { return false }
-        try ensureOpen()
-        return try query(
-            "SELECT 1 FROM chunks WHERE document_id = ? LIMIT 1;",
-            bindings: [row.id.uuidString]
-        ) { _ in true }.isEmpty
+        return try withDatabase {
+            return try query(
+                "SELECT 1 FROM chunks WHERE document_id = ? LIMIT 1;",
+                bindings: [row.id.uuidString]
+            ) { _ in true }.isEmpty
+        }
     }
 
     /// Stores a document and its chunks in one transaction, so a failure never leaves one without the other.
     func insertDocument(id: UUID, title: String, url: String, chunks: [DocumentChunk]) throws {
-        try ensureOpen()
-        try inTransaction {
-            try exec(
-                "INSERT INTO documents (id, title, url, chunk_count, indexed_at) VALUES (?,?,?,?,?);",
-                bindings: [id.uuidString, title, url, chunks.count, iso(Date())]
-            )
-            for chunk in chunks {
-                try insertChunk(chunk)
+        try withDatabase {
+            try inTransaction {
+                try exec(
+                    "INSERT INTO documents (id, title, url, chunk_count, indexed_at) VALUES (?,?,?,?,?);",
+                    bindings: [id.uuidString, title, url, chunks.count, iso(Date())]
+                )
+                for chunk in chunks {
+                    try insertChunk(chunk)
+                }
             }
-        }
-        for chunk in chunks where !chunk.embedding.isEmpty {
-            embeddingCache[chunk.id] = chunk.embedding
+            for chunk in chunks where !chunk.embedding.isEmpty {
+                embeddingCache[chunk.id] = chunk.embedding
+            }
         }
     }
 
     func allDocuments() throws -> [DocumentRow] {
-        try ensureOpen()
-        return try query(
-            "SELECT id, title, url, chunk_count, indexed_at FROM documents ORDER BY indexed_at DESC;",
-            map: rowToDocument
-        )
+        return try withDatabase {
+            return try query(
+                "SELECT id, title, url, chunk_count, indexed_at FROM documents ORDER BY indexed_at DESC;",
+                map: rowToDocument
+            )
+        }
     }
 
     func deleteDocument(id: UUID) throws {
-        try ensureOpen()
-        // Remove cached embeddings for this document's chunks
-        let chunkIDs = try query(
-            "SELECT id FROM chunks WHERE document_id = ?;",
-            bindings: [id.uuidString]
-        ) { stmt -> UUID? in
-            sqlite3_column_text(stmt, 0)
-                .flatMap { UUID(uuidString: String(cString: $0)) }
+        try withDatabase {
+            // Remove cached embeddings for this document's chunks
+            let chunkIDs = try query(
+                "SELECT id FROM chunks WHERE document_id = ?;",
+                bindings: [id.uuidString]
+            ) { stmt -> UUID? in
+                sqlite3_column_text(stmt, 0)
+                    .flatMap { UUID(uuidString: String(cString: $0)) }
+            }
+            for chunkID in chunkIDs {
+                embeddingCache[chunkID] = nil
+            }
+            try deleteRows(ofDocument: id.uuidString)
         }
-        for chunkID in chunkIDs {
-            embeddingCache[chunkID] = nil
-        }
-        try deleteRows(ofDocument: id.uuidString)
     }
 
     /// Returns all chunks for a specific document — used by DocumentExporter.
     func chunksForDocument(id: UUID) throws -> [DocumentChunk] {
-        try ensureOpen()
-        return try query(
-            "SELECT id, document_id, document_title, page_number, text, token_estimate FROM chunks WHERE document_id = ? ORDER BY rowid;",
-            bindings: [id.uuidString],
-            map: rowToChunk
-        )
+        return try withDatabase {
+            return try query(
+                "SELECT id, document_id, document_title, page_number, text, token_estimate FROM chunks WHERE document_id = ? ORDER BY rowid;",
+                bindings: [id.uuidString],
+                map: rowToChunk
+            )
+        }
     }
 
     /// Returns the raw text of every chunk — used to rebuild TF-IDF corpus weights.
     func allChunkTexts() throws -> [String] {
-        try ensureOpen()
-        return try query("SELECT text FROM chunks;") { stmt -> String? in
-            sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+        return try withDatabase {
+            return try query("SELECT text FROM chunks;") { stmt -> String? in
+                sqlite3_column_text(stmt, 0).map { String(cString: $0) }
+            }
         }
     }
 
@@ -163,76 +287,82 @@ actor VectorStore {
 
     /// The embedding identity recorded for this index, or `nil` for an index that predates it.
     func embeddingIdentity() throws -> EmbeddingIndexIdentity? {
-        try ensureOpen()
-        guard let identifier = try metadataValue(Self.providerKey),
-              let dimensions = try metadataValue(Self.dimensionsKey).flatMap({ Int($0) })
-        else { return nil }
-        return EmbeddingIndexIdentity(identifier: identifier, dimensions: dimensions)
+        return try withDatabase {
+            guard let identifier = try metadataValue(Self.providerKey),
+                  let dimensions = try metadataValue(Self.dimensionsKey).flatMap({ Int($0) })
+            else { return nil }
+            return EmbeddingIndexIdentity(identifier: identifier, dimensions: dimensions)
+        }
     }
 
     func setEmbeddingIdentity(_ identity: EmbeddingIndexIdentity) throws {
-        try ensureOpen()
-        try exec("BEGIN TRANSACTION;")
-        do {
-            try setMetadata(Self.providerKey, identity.identifier)
-            try setMetadata(Self.dimensionsKey, String(identity.dimensions))
-            try exec("COMMIT;")
-        } catch {
-            try? exec("ROLLBACK;")
-            throw error
+        try withDatabase {
+            try exec("BEGIN TRANSACTION;")
+            do {
+                try setMetadata(Self.providerKey, identity.identifier)
+                try setMetadata(Self.dimensionsKey, String(identity.dimensions))
+                try exec("COMMIT;")
+            } catch {
+                try? exec("ROLLBACK;")
+                throw error
+            }
         }
     }
 
     /// Distinct stored vector lengths, in floats (a missing vector counts as 0).
     func storedVectorLengths() throws -> Set<Int> {
-        try ensureOpen()
-        let byteLengths = try query("SELECT DISTINCT IFNULL(length(embedding), 0) FROM chunks;") { stmt -> Int? in
-            Int(sqlite3_column_int64(stmt, 0))
+        return try withDatabase {
+            let byteLengths = try query("SELECT DISTINCT IFNULL(length(embedding), 0) FROM chunks;") { stmt -> Int? in
+                Int(sqlite3_column_int64(stmt, 0))
+            }
+            return Set(byteLengths.map { $0 / MemoryLayout<Float>.size })
         }
-        return Set(byteLengths.map { $0 / MemoryLayout<Float>.size })
     }
 
     func chunkCount() throws -> Int {
-        try ensureOpen()
-        return try query("SELECT COUNT(*) FROM chunks;") { stmt -> Int? in
-            Int(sqlite3_column_int64(stmt, 0))
-        }.first ?? 0
+        return try withDatabase {
+            return try query("SELECT COUNT(*) FROM chunks;") { stmt -> Int? in
+                Int(sqlite3_column_int64(stmt, 0))
+            }.first ?? 0
+        }
     }
 
     /// One page of chunk texts in rowid order, for re-embedding without loading every chunk.
     func chunkTexts(afterRowID rowID: Int64, limit: Int) throws -> [(rowID: Int64, id: UUID, text: String)] {
-        try ensureOpen()
-        return try query(
-            "SELECT rowid, id, text FROM chunks WHERE rowid > ? ORDER BY rowid LIMIT ?;",
-            bindings: [rowID, limit]
-        ) { stmt -> (Int64, UUID, String)? in
-            guard
-                let idText = sqlite3_column_text(stmt, 1).map({ String(cString: $0) }),
-                let id     = UUID(uuidString: idText),
-                let text   = sqlite3_column_text(stmt, 2).map({ String(cString: $0) })
-            else { return nil }
-            return (sqlite3_column_int64(stmt, 0), id, text)
+        return try withDatabase {
+            return try query(
+                "SELECT rowid, id, text FROM chunks WHERE rowid > ? ORDER BY rowid LIMIT ?;",
+                bindings: [rowID, limit]
+            ) { stmt -> (Int64, UUID, String)? in
+                guard
+                    let idText = sqlite3_column_text(stmt, 1).map({ String(cString: $0) }),
+                    let id     = UUID(uuidString: idText),
+                    let text   = sqlite3_column_text(stmt, 2).map({ String(cString: $0) })
+                else { return nil }
+                return (sqlite3_column_int64(stmt, 0), id, text)
+            }
         }
     }
 
     /// Replaces stored vectors in place. An UPDATE of `embedding` fires none of the FTS triggers
     /// (they run on INSERT and DELETE only), so the full-text index is untouched.
     func updateEmbeddings(_ vectors: [(id: UUID, vector: [Float])]) throws {
-        try ensureOpen()
-        var stmt: OpaquePointer?
-        defer { sqlite3_finalize(stmt) }
-        guard sqlite3_prepare_v2(db, "UPDATE chunks SET embedding = ?1 WHERE id = ?2;", -1, &stmt, nil) == SQLITE_OK
-        else { throw dbError() }
-        try exec("BEGIN TRANSACTION;")
-        do {
-            for entry in vectors {
-                try runUpdate(stmt, id: entry.id, vector: entry.vector)
-                embeddingCache[entry.id] = entry.vector
+        try withDatabase {
+            var stmt: OpaquePointer?
+            defer { sqlite3_finalize(stmt) }
+            guard sqlite3_prepare_v2(db, "UPDATE chunks SET embedding = ?1 WHERE id = ?2;", -1, &stmt, nil) == SQLITE_OK
+            else { throw dbError() }
+            try exec("BEGIN TRANSACTION;")
+            do {
+                for entry in vectors {
+                    try runUpdate(stmt, id: entry.id, vector: entry.vector)
+                    embeddingCache[entry.id] = entry.vector
+                }
+                try exec("COMMIT;")
+            } catch {
+                try? exec("ROLLBACK;")
+                throw error
             }
-            try exec("COMMIT;")
-        } catch {
-            try? exec("ROLLBACK;")
-            throw error
         }
     }
 
@@ -282,68 +412,65 @@ actor VectorStore {
 
     /// Two-stage retrieval: FTS5 candidates → cosine re-rank.
     func search(query: String, queryEmbedding: [Float], topK: Int = 5, ftsLimit: Int = 20) throws -> [SearchResult] {
-        try ensureOpen()
+        return try withDatabase {
+            // Stage 1: FTS5 keyword candidates
+            let candidates = try ftsCandidates(query: query, limit: ftsLimit)
+            guard !candidates.isEmpty else { return [] }
 
-        // Stage 1: FTS5 keyword candidates
-        let candidates = try ftsCandidates(query: query, limit: ftsLimit)
-        guard !candidates.isEmpty else { return [] }
+            // Stage 2: load only the embeddings we need, then cosine re-rank
+            let needed = candidates.map(\.id)
+            let embeddings = try loadEmbeddings(for: needed)
 
-        // Stage 2: load only the embeddings we need, then cosine re-rank
-        let needed = candidates.map(\.id)
-        let embeddings = try loadEmbeddings(for: needed)
+            var scored: [SearchResult] = candidates.compactMap { chunk in
+                guard let emb = embeddings[chunk.id], !emb.isEmpty else { return nil }
+                let score = VectorMath.cosine(queryEmbedding, emb)
+                return SearchResult(chunk: chunk, score: score)
+            }
 
-        var scored: [SearchResult] = candidates.compactMap { chunk in
-            guard let emb = embeddings[chunk.id], !emb.isEmpty else { return nil }
-            let score = VectorMath.cosine(queryEmbedding, emb)
-            return SearchResult(chunk: chunk, score: score)
+            scored.sort { $0.score > $1.score }
+            return Array(scored.prefix(topK))
         }
-
-        scored.sort { $0.score > $1.score }
-        return Array(scored.prefix(topK))
     }
 
     /// Pure cosine search (no FTS pre-filter) — used when FTS returns 0 results.
     /// Streams embeddings from SQLite one row at a time to avoid loading all into RAM.
     func searchCosineOnly(queryEmbedding: [Float], topK: Int = 5) throws -> [SearchResult] {
-        try ensureOpen()
+        return try withDatabase {
+            // Stream through all chunks with a cursor, computing cosine on the fly
+            var stmt: OpaquePointer?
+            defer { sqlite3_finalize(stmt) }
+            let sql = "SELECT id, document_id, document_title, page_number, text, token_estimate, embedding FROM chunks;"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw dbError() }
 
-        // Stream through all chunks with a cursor, computing cosine on the fly
-        var stmt: OpaquePointer?
-        defer { sqlite3_finalize(stmt) }
-        let sql = "SELECT id, document_id, document_title, page_number, text, token_estimate, embedding FROM chunks;"
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw dbError() }
+            // Keep a bounded heap of top-K results
+            var topResults: [SearchResult] = []
+            topResults.reserveCapacity(topK + 1)
+            var minScore: Float = -1
 
-        // Keep a bounded heap of top-K results
-        var topResults: [SearchResult] = []
-        topResults.reserveCapacity(topK + 1)
-        var minScore: Float = -1
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                guard let chunk = rowToChunk(stmt) else { continue }
 
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let chunk = rowToChunk(stmt) else { continue }
+                // Read embedding BLOB from column 6
+                guard let emb = embedding(stmt, column: 6), !emb.isEmpty else { continue }
 
-            // Read embedding BLOB from column 6
-            let bytes = sqlite3_column_bytes(stmt, 6)
-            guard bytes > 0, let ptr = sqlite3_column_blob(stmt, 6) else { continue }
-            let emb = dataToFloats(Data(bytes: ptr, count: Int(bytes)))
-            guard !emb.isEmpty else { continue }
+                let score = VectorMath.cosine(queryEmbedding, emb)
 
-            let score = VectorMath.cosine(queryEmbedding, emb)
-
-            // Only insert if better than current min or heap not full
-            if topResults.count < topK || score > minScore {
-                topResults.append(SearchResult(chunk: chunk, score: score))
-                topResults.sort { $0.score > $1.score }
-                if topResults.count > topK {
-                    topResults.removeLast()
+                // Only insert if better than current min or heap not full
+                if topResults.count < topK || score > minScore {
+                    topResults.append(makeResult(chunk, score: score))
+                    topResults.sort { $0.score > $1.score }
+                    if topResults.count > topK {
+                        topResults.removeLast()
+                    }
+                    minScore = topResults.last?.score ?? -1
                 }
-                minScore = topResults.last?.score ?? -1
+
+                // Warm cache for chunks that made it into results
+                embeddingCache[chunk.id] = emb
             }
 
-            // Warm cache for chunks that made it into results
-            embeddingCache[chunk.id] = emb
+            return topResults
         }
-
-        return topResults
     }
 
     // MARK: - FTS Candidates
@@ -417,9 +544,7 @@ actor VectorStore {
                 let idStr = sqlite3_column_text(stmt, 0).map({ String(cString: $0) }),
                 let id    = UUID(uuidString: idStr)
             else { continue }
-            let bytes = sqlite3_column_bytes(stmt, 1)
-            if bytes > 0, let ptr = sqlite3_column_blob(stmt, 1) {
-                let vec = dataToFloats(Data(bytes: ptr, count: Int(bytes)))
+            if let vec = embedding(stmt, column: 1) {
                 result[id] = vec
                 embeddingCache[id] = vec  // warm cache for subsequent queries
             }
@@ -430,8 +555,9 @@ actor VectorStore {
 
     /// Load embeddings for specific chunk IDs — used by DocumentLibrary.export().
     func embeddings(for chunkIDs: [UUID]) throws -> [UUID: [Float]] {
-        try ensureOpen()
-        return try loadEmbeddings(for: chunkIDs)
+        return try withDatabase {
+            return try loadEmbeddings(for: chunkIDs)
+        }
     }
 
     // MARK: - Migrations
@@ -537,10 +663,6 @@ actor VectorStore {
     }
 
     // MARK: - SQLite helpers
-
-    private func ensureOpen() throws {
-        if db == nil { try open() }
-    }
 
     private func inTransaction(_ work: () throws -> Void) throws {
         try exec("BEGIN TRANSACTION;")
@@ -648,6 +770,16 @@ actor VectorStore {
         data.withUnsafeBytes { ptr in
             Array(ptr.bindMemory(to: Float.self))
         }
+    }
+
+    private func embedding(_ stmt: OpaquePointer?, column: Int32) -> [Float]? {
+        let bytes = sqlite3_column_bytes(stmt, column)
+        guard bytes > 0, let ptr = sqlite3_column_blob(stmt, column) else { return nil }
+        return dataToFloats(Data(bytes: ptr, count: Int(bytes)))
+    }
+
+    private func makeResult(_ chunk: DocumentChunk, score: Float) -> SearchResult {
+        SearchResult(chunk: chunk, score: score)
     }
 
     // MARK: - Date

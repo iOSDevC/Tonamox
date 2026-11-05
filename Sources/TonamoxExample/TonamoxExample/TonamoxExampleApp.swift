@@ -7,6 +7,8 @@ struct TonamoxExampleApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        // First Tonamox call: any storage access before it fixes this process on its private storage.
+        TonamoxSharedStorage.configure(appGroup: TonamoxAppGroup.identifier)
         // Before the first body, so Chat and Voice already list models downloaded from Hugging Face.
         DownloadRecords.standard.registerDownloaded()
     }

@@ -59,6 +59,10 @@ public struct DocumentAnswer: Sendable {
 /// print(answer.text)
 /// print(answer.sources.map { "[\($0.documentTitle) p.\($0.pageNumber)]" })
 /// ```
+///
+/// With ``TonamoxSharedStorage/configure(appGroup:)`` the default library lives in the App Group; the app's private
+/// index is merged in on first use when it was built with the same embedding model (or the shared index is
+/// empty), and its file is kept either way.
 public actor DocumentLibrary {
     
     // MARK: - Singleton
@@ -74,8 +78,11 @@ public actor DocumentLibrary {
     private let vectorStore: VectorStore
     private let chunker:     DocumentChunker
     
-    /// The provider identity the stored vectors are known to match; `nil` until checked.
-    private var matchedIdentity: EmbeddingIndexIdentity?
+    /// The provider identity the stored vectors are known to match; `nil` until checked, and again after the app
+    /// was in the background, since another app of the group may have re-embedded the shared index meanwhile.
+    private(set) var matchedIdentity: EmbeddingIndexIdentity?
+    private let suspension: SharedStorageSuspension?
+    private var suspensionHandlerID: UUID?
     /// Completes when the latest index job (identity check, re-embed, insert or search) has; each waits for it.
     private var indexJob: Task<Void, Never>?
     private static let embedBatchSize = 50
@@ -84,20 +91,55 @@ public actor DocumentLibrary {
 
     // MARK: - Init
     
+    /// - Parameter directory: where `vectors.sqlite` lives. `nil` uses `<Application Support>/Tonamox/docs`, which
+    ///   is the App Group's once ``TonamoxSharedStorage/configure(appGroup:)`` applied one.
     public init(
         directory: URL? = nil,
         chunkTargetTokens: Int = 512,
         chunkOverlapFraction: Double = 0.1
     ) {
-        let base = directory ?? FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Tonamox/docs", isDirectory: true)
-        
-        self.vectorStore = VectorStore(directory: base)
+        if let directory {
+            self.init(directory: directory, legacyDirectories: [], suspension: nil,
+                      chunkTargetTokens: chunkTargetTokens, chunkOverlapFraction: chunkOverlapFraction)
+        } else {
+            let resolution = TonamoxSharedStorage.resolution(for: .documents)
+            let legacy = resolution.privateApplicationSupport.map(Self.legacyDocumentDirectories(in:)) ?? []
+            self.init(directory: Self.documentDirectory(in: resolution.applicationSupport), legacyDirectories: legacy,
+                      suspension: legacy.isEmpty ? nil : .live,
+                      chunkTargetTokens: chunkTargetTokens, chunkOverlapFraction: chunkOverlapFraction)
+        }
+    }
+
+    /// `suspension` non-`nil` closes the index and forgets ``matchedIdentity`` when the app enters the background.
+    init(
+        directory: URL,
+        legacyDirectories: [URL],
+        suspension: SharedStorageSuspension?,
+        chunkTargetTokens: Int = 512,
+        chunkOverlapFraction: Double = 0.1
+    ) {
+        self.vectorStore = VectorStore(directory: directory, legacyDirectories: legacyDirectories,
+                                       suspension: suspension)
         self.chunker     = DocumentChunker(
             targetTokens:    chunkTargetTokens,
             overlapFraction: chunkOverlapFraction
         )
+        self.suspension  = suspension
+    }
+
+    deinit {
+        if let suspensionHandlerID { suspension?.removeHandler(suspensionHandlerID) }
+    }
+
+    static func documentDirectory(in applicationSupport: URL) -> URL {
+        applicationSupport.appending(path: "Tonamox/docs", directoryHint: .isDirectory)
+    }
+
+    /// The app's own indexes: today's folder and `AuraLocal/docs`, the default before the rename to Tonamox, which
+    /// nothing read since.
+    static func legacyDocumentDirectories(in applicationSupport: URL) -> [URL] {
+        [documentDirectory(in: applicationSupport),
+         applicationSupport.appending(path: "AuraLocal/docs", directoryHint: .isDirectory)]
     }
     
     // MARK: - Configuration
@@ -190,6 +232,7 @@ public actor DocumentLibrary {
             return existing
         case .stored(let truncatedInputs):
             truncated = truncatedInputs
+            TonamoxSharedStorage.postChange(.documents)
         }
 
         let truncationNote = truncated > 0 ? ", \(truncated) cut at the model's token limit" : ""
@@ -338,6 +381,7 @@ public actor DocumentLibrary {
     /// Remove a document and all its chunks from the library.
     public func removeDocument(id: UUID) async throws {
         try await vectorStore.deleteDocument(id: id)
+        TonamoxSharedStorage.postChange(.documents)
     }
     
     // MARK: - Export
@@ -549,11 +593,11 @@ extension DocumentLibrary {
             if matchedIdentity == configured { return }
             switch try await reconciliation(for: embedder) {
             case .upToDate:
-                matchedIdentity = configured
+                rememberMatchedIdentity(configured)
                 return
             case .adopt:
                 try await vectorStore.setEmbeddingIdentity(configured)
-                matchedIdentity = configured
+                rememberMatchedIdentity(configured)
                 return
             case .reembed:
                 break
@@ -598,7 +642,20 @@ extension DocumentLibrary {
             await onProgress("Re-embedding \(done)/\(total) chunks: \(Self.percent(done, of: total))%")
         }
         try await vectorStore.setEmbeddingIdentity(identity)
+        rememberMatchedIdentity(identity)
+        TonamoxSharedStorage.postChange(.documents)
+    }
+
+    private func rememberMatchedIdentity(_ identity: EmbeddingIndexIdentity) {
         matchedIdentity = identity
+        guard let suspension, suspensionHandlerID == nil else { return }
+        suspensionHandlerID = suspension.addHandler { [weak self] in
+            await self?.forgetMatchedIdentity()
+        }
+    }
+
+    private func forgetMatchedIdentity() {
+        matchedIdentity = nil
     }
 
     /// Re-embeds the next page of chunks after `rowID`; `nil` when none are left.

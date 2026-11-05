@@ -60,22 +60,33 @@ extension ModelDownloads {
         recordedRevision(in: directory, marker: completeMarker) == revision
     }
 
-    /// Removes `models--org--repo` (finished and partial files) from the storage root; in Caches only its
-    /// `snapshots/main`, since a Hugging Face cache there may hold the same repo.
+    /// Removes `models--org--repo` (finished and partial files) from the storage root and from the app's private
+    /// root when storage is shared through an App Group; in Caches only its `snapshots/main`, since a Hugging Face
+    /// cache there may hold the same repo. Throws ``ModelFilesInUseError`` while a download writes into the repo.
     public static func deleteRepo(_ repoID: String) throws {
-        try deleteRepo(repoID, root: storageRoot)
-        for legacyRoot in ModelStorage.fallbackRoots {
-            try deleteLegacySnapshot(repoID: try validated(repoID: repoID), root: legacyRoot)
+        let repo = try validated(repoID: repoID)
+        try whileNotDownloading(snapshotDirectory(repoID: repo, root: storageRoot)) {
+            try deleteRepo(repo, root: storageRoot)
+            for ownedRoot in ModelStorage.ownedFallbackRoots {
+                try deleteRepo(repo, root: ownedRoot)
+            }
+            try deleteLegacySnapshot(repoID: repo, root: ModelStorage.legacyRoot)
         }
+        TonamoxSharedStorage.postChange(.models)
     }
 
     /// Removes `folder` of `repoID` with its partial files and markers, then the parents it leaves empty, so
-    /// `models--org--repo` goes with the last folder; in the storage root and in Caches. Other folders of the repo
-    /// stay. Does nothing when absent.
+    /// `models--org--repo` goes with the last folder; in every root models are read from. Other folders of the repo
+    /// stay. Does nothing when absent. Throws ``ModelFilesInUseError`` while a download writes into the repo.
     public static func deleteFolder(repoID: String, folder: String) throws {
-        for root in ModelStorage.readRoots {
-            try deleteFolder(repoID: repoID, folder: folder, root: root)
+        let repo = try validated(repoID: repoID)
+        let hub = repoFolder(repoID: repo, root: storageRoot).deletingLastPathComponent()
+        try whileNotDownloading(snapshotDirectory(repoID: repo, root: storageRoot), removingEmptyFoldersUpTo: hub) {
+            for root in ModelStorage.readRoots {
+                try deleteFolder(repoID: repo, folder: folder, root: root)
+            }
         }
+        TonamoxSharedStorage.postChange(.models)
     }
 
     // MARK: Revision
@@ -245,6 +256,7 @@ extension ModelDownloads {
         }
         progress(total, total)
         try Data(revision.utf8).write(to: marker)
+        TonamoxSharedStorage.postChange(.models)
         return directory
     }
 

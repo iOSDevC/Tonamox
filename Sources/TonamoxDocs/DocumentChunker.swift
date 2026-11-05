@@ -1,4 +1,5 @@
 import Foundation
+import TonamoxCore
 
 // MARK: - DocumentChunk
 
@@ -323,11 +324,11 @@ public actor TFIDFEmbeddingProvider: EmbeddingProvider {
 public actor AutoEmbeddingProvider: EmbeddingProvider, TruncationReporting {
 
     /// Where ``DocsTab`` looks for, and imports, the e5 bundle:
-    /// `Application Support/AuraLocal/embeddings/multilingual-e5-small`.
+    /// `Application Support/AuraLocal/embeddings/multilingual-e5-small`, in the App Group once
+    /// ``TonamoxSharedStorage/configure(appGroup:)`` applied one.
     public static let defaultModelBundleURL: URL = {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return support.appendingPathComponent("AuraLocal/embeddings/multilingual-e5-small", isDirectory: true)
+        TonamoxSharedStorage.resolution(for: .embeddings).applicationSupport
+            .appending(path: "AuraLocal/embeddings/multilingual-e5-small", directoryHint: .isDirectory)
     }()
 
     public nonisolated let dimensions: Int

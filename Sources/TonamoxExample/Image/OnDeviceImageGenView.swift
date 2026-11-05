@@ -495,6 +495,12 @@ final class ImageGenState {
 
     // MARK: Download
 
+    /// Re-reads the model list after another app of the group remembered or forgot an image model.
+    func reloadModels() {
+        availableModels = store.all
+        refreshDisk()
+    }
+
     func refreshDisk() {
         isDownloaded = selectedModel.isDownloaded
         downloadedIDs = Set(availableModels.filter(\.isDownloaded).map(\.id))

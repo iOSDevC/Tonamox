@@ -1,7 +1,16 @@
 import XCTest
 @testable import TonamoxCore
 
+/// Runs on a keychain service of its own: these tests save and delete the Hugging Face token item.
 final class DownloadAuthTests: XCTestCase {
+
+    override func invokeTest() {
+        let location = KeychainStore.Location(service: "dev.auralocal.tests.\(UUID().uuidString)", accessGroup: nil)
+        KeychainStore.$locationOverride.withValue(location) {
+            super.invokeTest()
+            KeychainStore.delete(for: KeychainDownloadAuth.huggingFaceAccount)
+        }
+    }
 
     func testNoAuthNeverAddsHeaders() {
         let h = NoDownloadAuth().headers(for: URL(string: "https://huggingface.co/x/resolve/main/f.gguf")!)

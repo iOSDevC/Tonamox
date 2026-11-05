@@ -88,3 +88,17 @@ public enum DownloadConflictError: LocalizedError, Equatable, Sendable {
         }
     }
 }
+
+/// A delete refused because a download, in this process or another app of the group, is writing the model's files.
+public struct ModelFilesInUseError: LocalizedError, Equatable, Sendable {
+    /// The file or folder the download holds, by name.
+    public let name: String
+
+    public init(name: String) {
+        self.name = name
+    }
+
+    public var errorDescription: String? {
+        "\(name) is being downloaded right now, here or by another app. Delete it after the download ends."
+    }
+}

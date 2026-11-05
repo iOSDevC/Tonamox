@@ -47,6 +47,16 @@ public actor DocumentLibrary
 static let shared: DocumentLibrary
 ```
 
+The default library (`shared`, or `directory: nil`) keeps its index at
+`<Application Support>/Tonamox/docs/vectors.sqlite`, in the group's container once
+`TonamoxSharedStorage.configure(appGroup:)` has applied an App Group. The app's private indexes (`Tonamox/docs`, and
+`AuraLocal/docs` from before the rename) are then copied in once, when their embedding identity matches the shared
+index or the shared index has no chunks; the private files are kept either way. While an App Group app is in the
+background (iOS), each call opens, runs in its own background task and closes the index, and the library re-reads
+the embedding identity afterwards. `add` (a new document), `removeDocument` and a re-embed post
+`TonamoxSharedStorage.didChangeNotification` with `.documents`. Guide:
+[Sharing the library between apps]({{ '/guide/rag' | relative_url }}#sharing-the-library-between-apps).
+
 ### Setup
 
 ```swift
@@ -122,7 +132,7 @@ public struct IndexedDocument: Identifiable, Sendable {
 
 ```swift
 // Custom location and chunk size (default: 512 tokens, 10% overlap).
-// directory nil = Application Support/AuraLocal/docs
+// directory nil = <Application Support>/Tonamox/docs, in the App Group's container once one is configured
 init(directory: URL? = nil, chunkTargetTokens: Int = 512, chunkOverlapFraction: Double = 0.1)
 ```
 
@@ -196,6 +206,7 @@ public actor AutoEmbeddingProvider: EmbeddingProvider
 init()                                                            // TF-IDF, 4096-dim, no download
 init(embeddingModelAt bundleURL: URL?, compiledModelsDirectory: URL? = nil)   // e5 if the bundle is valid, else TF-IDF
 static let defaultModelBundleURL: URL                             // Application Support/AuraLocal/embeddings/multilingual-e5-small
+                                                                   // (the App Group's, once one is configured)
 nonisolated var usesDenseModel: Bool
 nonisolated let denseModelProblem: String?                        // why the bundle is not used
 func warmUp() async throws -> Duration                            // @discardableResult; .zero for TF-IDF
@@ -258,8 +269,9 @@ nothing until the user taps it; once both are on disk it loads them and opens th
 true)` skips the placeholder and downloads them on first appearance, as earlier versions did. See
 [Downloading on demand]({{ '/api/ui' | relative_url }}#downloading-on-demand). It uses multilingual-e5-small when a valid bundle is installed at
 `AutoEmbeddingProvider.defaultModelBundleURL` (the toolbar's "Import embedding model…" copies one
-there), and TF-IDF otherwise. When the provider changed since the index was built, it re-embeds the
-index before it becomes ready.
+there, and posts `TonamoxSharedStorage.didChangeNotification` with `.models`), and TF-IDF otherwise. When the
+provider changed since the index was built, it re-embeds the index before it becomes ready. Once ready, it reloads its
+document list on a `.documents` change from this app or another app of the group, unless it is indexing.
 
 ```swift
 import TonamoxDocs

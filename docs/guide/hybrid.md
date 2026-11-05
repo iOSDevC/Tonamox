@@ -208,6 +208,27 @@ Keys are stored in the Keychain, never in source, files, or logs. Save a key onc
 settings screen): `try KeychainStore.save(key, for: "cloud.openai")`.
 Works from iOS, macOS, and visionOS.
 
+**Sharing keys between your apps.** On iOS (and visionOS), once `TonamoxSharedStorage.configure(appGroup:)` has
+applied an App Group (see
+[Sharing storage between apps]({{ '/guide/models' | relative_url }}#sharing-storage-between-apps-app-group)),
+`KeychainStore` works in the group's keychain access group, so every app of the group reads the same cloud keys
+and Hugging Face token:
+
+- `save` writes to the group.
+- At `configure`, the app's existing items (service `dev.auralocal.remote`) are copied into the group once, and the
+  private copies stay for older builds. On a locked device the copy waits, and on iOS it is retried when the app
+  returns to the foreground. The copy never runs again once it finished (a flag in `UserDefaults.standard`), so a
+  key another app deleted is not copied back.
+- `read` and `hasKey` look only in the group once that copy finished; until then they fall back to any access
+  group the app has. A key cleared in one app is therefore gone in every app, even though another app's private
+  copy still exists.
+- `delete` removes every copy the app can reach: the group's and its own private ones, not another app's private
+  copy.
+- `hasKey` reads the item's attributes only, never its secret.
+
+On macOS nothing changes. Items stay in the login keychain, which has no access groups, so another app or the
+`tonamox` CLI reading an item an app created may make macOS ask for permission.
+
 {: .note }
 > GitHub retired GitHub Models on 2026-07-30. `OpenAICompatibleProvider.gitHubModels(apiKey:)` and
 > the `cloudTargets` overload taking `gitHubModelsModel:` are `unavailable` (a compile error that
@@ -262,7 +283,8 @@ await crew.run(topic: "Q3 security posture", policy: policy, consent: myConsentG
 
 ## Privacy & cost
 
-- **BYOK keys** live only in the Keychain (`WhenUnlockedThisDeviceOnly`), never synced to iCloud.
+- **BYOK keys** live only in the Keychain (`WhenUnlockedThisDeviceOnly`), never synced to iCloud. With an App
+  Group configured on iOS, the apps of the group share them (see [Cloud targets](#cloud-targets-byok)).
 - Your **`ConsentGate`** is called before an offered escalation with the `target` (including
   `target.provider.retentionNote`), the `preview` (`CompressionResult`) and an `EscalationOffer`:
   the router's `reason`, `projectedCostUSD` (`nil` when the model is unpriced), `sessionSpentUSD`,

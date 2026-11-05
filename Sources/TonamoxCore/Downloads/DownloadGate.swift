@@ -149,14 +149,18 @@ actor DownloadGate {
 struct DownloadFileLock: Sendable {
     let lockFile: URL
     private let descriptor: Int32
+    private let id: UInt64
+    private let registry: DownloadLockRegistry
     /// Folders created to hold the lock file; removed on release if still empty.
     private let createdFolders: [URL]
 
     static let log = Logger(subsystem: "dev.auralocal", category: "DownloadGate")
 
-    private init(lockFile: URL, descriptor: Int32, createdFolders: [URL]) {
+    private init(lockFile: URL, descriptor: Int32, registry: DownloadLockRegistry, createdFolders: [URL]) {
         self.lockFile = lockFile
         self.descriptor = descriptor
+        self.registry = registry
+        self.id = registry.register(descriptor)
         self.createdFolders = createdFolders
     }
 
@@ -166,8 +170,19 @@ struct DownloadFileLock: Sendable {
             .appendingPathComponent(target.lastPathComponent + ".lock", isDirectory: false)
     }
 
+    /// Whether this process holds any download lock; a backgrounded app keeps running while it does.
+    static var hasHeldLocks: Bool { DownloadLockRegistry.shared.hasHeldLocks }
+
+    /// Unlocks and closes every lock this process holds, for an app about to be suspended (iOS kills a suspended
+    /// app holding a lock in a shared container). The interrupted transfers lose their cross-process guard.
+    static func relinquishAll() {
+        let count = DownloadLockRegistry.shared.relinquishAll()
+        if count > 0 { log.notice("relinquished \(count) download locks before suspension") }
+    }
+
     /// Waits until no other open file holds the lock on `destination`'s lock file, then holds it.
-    static func acquire(for destination: URL, retryInterval: Duration) async throws -> DownloadFileLock {
+    static func acquire(for destination: URL, retryInterval: Duration,
+                        registry: DownloadLockRegistry = .shared) async throws -> DownloadFileLock {
         let lockFile = lockFile(for: destination)
         var created: [URL] = []
         var reportedWait = false
@@ -176,7 +191,7 @@ struct DownloadFileLock: Sendable {
                 try Task.checkCancellation()
                 created += try createMissingFolders(above: lockFile)
                 if let descriptor = try lockIfFree(lockFile) {
-                    return held(lockFile, descriptor: descriptor, createdFolders: created)
+                    return held(lockFile, descriptor: descriptor, registry: registry, createdFolders: created)
                 }
                 if !reportedWait {
                     reportedWait = true
@@ -190,20 +205,39 @@ struct DownloadFileLock: Sendable {
         }
     }
 
+    enum Attempt {
+        /// The lock file's folder does not exist, so nothing is being written there.
+        case absent
+        /// Another open file holds the lock.
+        case busy
+        case held(DownloadFileLock)
+    }
+
+    /// Takes the lock without waiting and without creating folders.
+    static func attempt(for destination: URL, registry: DownloadLockRegistry = .shared) throws -> Attempt {
+        let lockFile = lockFile(for: destination)
+        guard FileManager.default.fileExists(atPath: lockFile.deletingLastPathComponent().path(percentEncoded: false))
+        else { return .absent }
+        guard let descriptor = try lockIfFree(lockFile) else { return .busy }
+        return .held(held(lockFile, descriptor: descriptor, registry: registry, createdFolders: []))
+    }
+
     /// Unlinks the lock file while still holding it, so a process that opened it starts over. A file recreated after a
-    /// delete removed this one belongs to another holder and stays.
+    /// delete removed this one belongs to another holder and stays. A relinquished lock was already closed.
     func release() {
+        defer { Self.removeEmpty(createdFolders) }
+        guard registry.unregister(id) else { return }
         let path = lockFile.path(percentEncoded: false)
         if Self.isLinked(descriptor, at: path) {
             unlink(path)
         }
         flock(descriptor, LOCK_UN)
         close(descriptor)
-        Self.removeEmpty(createdFolders)
     }
 
-    private static func held(_ lockFile: URL, descriptor: Int32, createdFolders: [URL]) -> DownloadFileLock {
-        DownloadFileLock(lockFile: lockFile, descriptor: descriptor, createdFolders: createdFolders)
+    private static func held(_ lockFile: URL, descriptor: Int32, registry: DownloadLockRegistry,
+                             createdFolders: [URL]) -> DownloadFileLock {
+        DownloadFileLock(lockFile: lockFile, descriptor: descriptor, registry: registry, createdFolders: createdFolders)
     }
 
     /// The locked descriptor, or `nil` to retry: another open file holds the lock, or the file or its folder vanished.
@@ -262,5 +296,49 @@ struct DownloadFileLock: Sendable {
 
     private static func posixError(_ code: Int32) -> POSIXError {
         POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
+    }
+}
+
+// MARK: - DownloadLockRegistry
+
+/// The descriptors of the download locks this process holds. Instances keep tests apart from the process-wide one.
+final class DownloadLockRegistry: Sendable {
+    static let shared = DownloadLockRegistry()
+
+    private struct State: Sendable {
+        var nextID: UInt64 = 0
+        var held: [UInt64: Int32] = [:]
+    }
+
+    private let locked = OSAllocatedUnfairLock(initialState: State())
+
+    func register(_ descriptor: Int32) -> UInt64 {
+        locked.withLock { current in
+            let id = current.nextID
+            current.nextID += 1
+            current.held[id] = descriptor
+            return id
+        }
+    }
+
+    /// `true` when the caller still owns the descriptor, `false` after ``relinquishAll()`` closed it.
+    func unregister(_ id: UInt64) -> Bool {
+        locked.withLock { $0.held.removeValue(forKey: id) != nil }
+    }
+
+    var hasHeldLocks: Bool { locked.withLock { !$0.held.isEmpty } }
+
+    /// Returns how many locks were released.
+    @discardableResult
+    func relinquishAll() -> Int {
+        let descriptors = locked.withLock { current -> [Int32] in
+            defer { current.held.removeAll() }
+            return Array(current.held.values)
+        }
+        for descriptor in descriptors {
+            flock(descriptor, LOCK_UN)
+            close(descriptor)
+        }
+        return descriptors.count
     }
 }

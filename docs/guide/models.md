@@ -525,7 +525,7 @@ per-quant fit table and the `models.json` entry; `--entry` prints only the entry
 
 ### The example apps
 
-Both example apps use TonamoxUI's Hugging Face browser (`HFModelSearchList`, `HFRepoDetailView`,
+TonamoxExample and ModelFinder use TonamoxUI's Hugging Face browser (`HFModelSearchList`, `HFRepoDetailView`,
 `HuggingFaceTokenSection`, and in ModelFinder `DownloadedModelsList`; see the
 [UI API]({{ '/api/ui' | relative_url }}#hugging-face-browser)),
 built on the same checker and on [`ModelDownloads`](#downloading-without-loading): search with format and sort
@@ -563,6 +563,27 @@ finished). A gated repo shows **Add a token**, which opens the token form in pla
     free. Delete is disabled while a download writes the files or a model loads from them, including the
     downloads Library and Agents start from their placeholder. Badges appear only on files that a download
     record or `ModelRegistry` identifies.
+- **TonamoxChat, TonamoxImage, TonamoxLibrary and TonamoxTerminal** are four smaller apps in the same project
+  (`Sources/TonamoxExample/TonamoxExample.xcodeproj`, one shared scheme per app). They are built from
+  TonamoxExample's own feature folders, so each screen works as it does there. All five apps call
+  `TonamoxSharedStorage.configure(appGroup: "group.io.iosdevc.tonamox")` first in `App.init`, and their iOS builds
+  carry that App Group. On one iPhone they therefore share models, download records, conversations, the document
+  index and the keys saved in Settings (see [Sharing storage between apps](#sharing-storage-between-apps-app-group)).
+  The Mac builds carry no App Group: they share the user-wide folders instead, as TonamoxExample and the `tonamox`
+  CLI already do.
+  - **TonamoxChat** (`io.iosdevc.TonamoxChat`, iOS and macOS): the Chat and Voice tabs, with Chat's model sheet
+    for downloads and **Compare engines**.
+  - **TonamoxImage** (`io.iosdevc.TonamoxImage`, iOS and macOS): the Image tab, with its Core ML finder.
+  - **TonamoxLibrary** (`io.iosdevc.TonamoxLibrary`, iOS and macOS): `DocsTab`, with its download placeholder
+    and **Import embedding model…**.
+  - **TonamoxTerminal** (`io.iosdevc.TonamoxTerminal`, iOS only, links only TonamoxCore): a read-only
+    **Shared Models** list showing the storage scope, the models folder, whether a Hugging Face token is
+    stored, and the GGUF files and MLX snapshots on disk. It downloads and loads nothing. It has no Mac
+    destination, including "Designed for iPad".
+  - On iOS, Chat, Image and Library have a **Settings** tab with the Hybrid settings (escalation policy, cloud
+    keys, Hugging Face token). On a Mac, the same view is the app's Settings window.
+  - Each app refreshes its model lists when another app of the group signals a change, and again every time it
+    becomes active, because a suspended app misses those signals.
 - **[ModelFinder](https://github.com/iOSDevC/Tonamox/blob/development/Examples/ModelFinder/README.md)** (iOS 18 and
   macOS 15): the same views in a split view with a device picker (this device, iPhone classes, Macs), a Downloads
   tab and a Settings tab. Its README explains how to generate and open the project.
@@ -686,10 +707,14 @@ try ModelDownloads.delete(model)                                // file + .parti
   `ChunkedDownloader` and `ModelCompatibilityChecker` read, as does TonamoxUI's `ModelSection` through `ModelDownloads` (the MLX load path does not; service
   `dev.auralocal.remote`, account `download.huggingface`): `KeychainDownloadAuth.saveHuggingFaceToken(_:)`,
   `deleteHuggingFaceToken()`, `hasHuggingFaceToken`. It is sent to `huggingface.co` / `hf.co` only, never to the
-  CDN a file redirects to. On iOS the item belongs to the app that saved it.
+  CDN a file redirects to. On iOS the item belongs to the app that saved it, unless the app shares storage
+  through an App Group, in which case every app of the group reads it (see
+  [Sharing storage between apps](#sharing-storage-between-apps-app-group)).
 - **Limits**: no background `URLSession`, so a transfer stops when the app is suspended and resumes from the
-  partial file later. `delete`, `deleteFolder` and `deleteRepo` do not wait for a running download; TonamoxUI refuses
-  them while one writes the files.
+  partial file later. `delete`, `deleteFolder` and `deleteRepo` (and `CoreMLDiffusionModel.delete()`, which uses
+  `deleteFolder`) do not wait for a running download. While a download in this process or in another one holds
+  the model's lock file, they throw `ModelFilesInUseError` and delete nothing. TonamoxUI also refuses a delete
+  while one of its own downloads writes the files.
 
 ### Concurrent downloads
 
@@ -713,10 +738,13 @@ Library downloads it, the `tonamox` CLI and TonamoxExample at once — is safe:
   for the file, and its cancelled call returns only once its `URLSession` has stopped, so a file it was verifying
   is left as a `.partial` for the next caller instead of being moved into place under it. A paused
   `GGUFModelDownloader` keeps its file reserved until it resumes and finishes, or is cancelled.
-- **Across processes**: processes sharing the storage root (on macOS the `tonamox` CLI, apps without App Sandbox and
-  `swift test`) also take an advisory `flock` on `<file>.lock` or `snapshots/main.lock` next to the destination,
-  polled without blocking a thread. The lock file is removed on release unless a delete replaced it meanwhile; one
-  left by a crash is simply taken over, since the kernel drops the lock with the process.
+- **Across processes**: processes sharing the storage root also take an advisory `flock` on `<file>.lock` or
+  `snapshots/main.lock` next to the destination, polled without blocking a thread. On macOS these are the
+  `tonamox` CLI, apps without App Sandbox and `swift test`; on iOS, the apps of one App Group. The lock file is
+  removed on release unless a delete replaced it meanwhile. One left by a crash is simply taken over, since the
+  kernel drops the lock with the process. An iOS app of an App Group gives up its locks when its background time
+  runs out, because iOS kills a suspended app that holds a lock in a shared container. A transfer that was
+  running then continues without a cross-process guard, and the size check below is the only protection left.
 - **Validation**: before a finished `.partial` is moved into place it must still exist with the size just
   written. If something else changed it — another tool, or an Tonamox build older than this guard writing the
   same folder — the download throws `DownloadConflictError.partialChanged(path:)`, replaces nothing, and the next
@@ -730,9 +758,13 @@ TonamoxImageGen's Core ML folders. The first access creates the folder and sets 
 multi-gigabyte weights stay out of iCloud and device backups (and Time Machine), and iOS does not purge them the
 way it purges Caches when storage runs low.
 
-- **iOS, sandboxed Mac app**: the folder is inside the app's container; apps do not share models.
+- **iOS, sandboxed Mac app**: the folder is inside the app's container, so apps do not share models. The
+  exception is an app that called `TonamoxSharedStorage.configure(appGroup:)` with a group it is entitled to: its
+  folder is then `<group container>/Library/Application Support/AuraLocal/Models`, shared with the other apps of the
+  group (see [Sharing storage between apps](#sharing-storage-between-apps-app-group)).
 - **Non-sandboxed macOS process** (the `tonamox` CLI, an app without App Sandbox such as TonamoxExample, `swift test`):
-  `~/Library/Application Support/AuraLocal/Models`, shared by all of them, so one download serves each.
+  `~/Library/Application Support/AuraLocal/Models`, shared by all of them, so one download serves each. Configuring
+  an App Group does not change this folder.
 - **Compiled Core ML caches** (`Caches/AuraLocal/CompiledModels`) and the remote catalog cache stay in Caches: both
   are rebuilt when missing.
 
@@ -766,6 +798,159 @@ let report = ModelStorage.migrateLegacyDownloads()   // non-sandboxed Mac app, o
 print(report.moved, report.conflicts, report.failures)
 ```
 
+### Sharing storage between apps (App Group)
+
+Apps in one App Group can share Tonamox's data: models, download and image-model records, conversations, the
+document index, the multilingual-e5 bundle and, on iOS, the keychain items. Each app calls
+`TonamoxSharedStorage.configure(appGroup:)` before any other Tonamox call. For the entitlement and signing setup,
+see [Installation › App Groups]({{ '/guide/installation' | relative_url }}#app-groups-sharing-storage-between-apps).
+Without the call, every path stays as described above.
+
+```swift
+import SwiftUI
+import TonamoxCore
+
+@main
+struct MyApp: App {
+    init() {
+        TonamoxSharedStorage.configure(appGroup: "group.com.example.apps")   // first Tonamox call
+        DownloadRecords.standard.registerDownloaded()
+    }
+    var body: some Scene { WindowGroup { ContentView() } }
+}
+```
+
+**Call it first.** The first read of any Tonamox storage location fixes the configuration for the rest of the
+process. That includes:
+
+- `ModelStorage.rootDirectory`, and so any download, any disk scan and `Model.isDownloaded`;
+- `DownloadRecords.standard` and `CoreMLDiffusionModelStore.standard`;
+- the first `KeychainStore` or `KeychainDownloadAuth` call;
+- `ConversationStore.shared`, or any `ConversationStore(directory: nil)`;
+- `DocumentLibrary.shared`, or any `DocumentLibrary(directory: nil)`;
+- `AutoEmbeddingProvider.defaultModelBundleURL` and `TonamoxSharedStorage.scope`.
+
+A `configure` after that changes nothing. It logs a fault (subsystem `dev.auralocal`, category `SharedStorage`)
+and returns `.ignored(current:firstUse:)`, where `firstUse` names what read storage first. Calling it again with
+the same identifier returns the first result, and a different identifier returns `.ignored`. `configure` is
+`@MainActor`.
+
+| Process | `configure(appGroup:)` returns | Data lives in |
+|---|---|---|
+| Not configured, any platform (the `tonamox` CLI, `swift test`) | not called; `scope` is `.standard` | the paths above, unchanged |
+| iOS, iPadOS, visionOS, entitled to the group | `.applied(.appGroup(identifier:container:))` | `<group container>/Library/Application Support/` |
+| iOS without the entitlement (no container) | `.unavailable(appGroup:)`; `scope` stays `.standard` | the app's own container; nothing moves |
+| Sandboxed Mac app with the group in `com.apple.security.application-groups` | `.applied(.appGroup(…))` | the group container (keychain unchanged) |
+| Sandboxed Mac app without that entitlement | `.unavailable(appGroup:)` | the app's own container; nothing moves |
+| Mac process without App Sandbox | `.applied(.userWide(identifier:))` | `~/Library/Application Support/`, as before |
+
+A sandboxed Mac app's entitlement is read from its code signature, because
+`containerURL(forSecurityApplicationGroupIdentifier:)` returns a path on macOS even without one.
+
+| Data | `.appGroup` | `.userWide` (Mac without App Sandbox) |
+|---|---|---|
+| Models (`AuraLocal/Models`), e5 bundle (`AuraLocal/embeddings`) | in the group | unchanged: already user-wide |
+| Download records, image-model records | `AuraLocal/download-records.json`, `AuraLocal/image-model-records.json` in the group | the same files in `~/Library/Application Support/AuraLocal/` |
+| Conversations (`ConversationStore.shared`) | `AuraLocal/conversations.sqlite` in the group | unchanged: already user-wide |
+| Document index (`DocumentLibrary.shared`) | `Tonamox/docs/vectors.sqlite` in the group | unchanged: already user-wide |
+| Keychain items (service `dev.auralocal.remote`) | the group's access group, on iOS and visionOS only | unchanged (login keychain) |
+| Change signal | Darwin notifications `<identifier>.models`, `.conversations`, `.documents` | the same |
+| Closing on background | iOS and iPadOS | none |
+
+Records are a JSON file, not an App Group `UserDefaults` suite, because each process caches a suite and a write
+could drop another app's record. Every write holds a `flock` on `AuraLocal/records.lock`, reads the file fresh and
+replaces it atomically. Compiled Core ML models (`Caches/AuraLocal/CompiledModels`) and the remote catalog cache
+stay per app, so every app compiles the shared e5 bundle (an `.mlpackage`) once for itself.
+
+**What moves into the group** (`.appGroup` only; `.userWide` merges only the records). Model files, the e5
+embedding bundle included, are the only data that moves. Everything else is copied, and the app's private copy
+stays as it was.
+
+- **Model files move.** During `configure`, on the main thread, the app's private `AuraLocal/Models` tree is
+  merged into the group's. Only renames run (`RENAME_EXCL`): nothing is copied or overwritten, and a `.partial`
+  keeps its ETag and SHA-256 attributes. An entry the group lacks moves as a whole. Two folders with the same name
+  are merged entry by entry, unless either one is a download: a folder holding `.complete` or `.revision`, or a
+  `snapshots/main` or folder download that holds files. A download moves as a whole or stays where it is. Lock
+  files stay. An entry the group already has stays private as a conflict, unless both copies are finished and
+  identical. Files count as identical with the same size and verified SHA-256. Folders count as identical when
+  both are `.complete` with the same files and either the same revision or the same verified weights. In that
+  case the private copy is deleted. Whatever stays (conflicts, a rename that failed) is still read: the read
+  order is the group root, then the app's private root, then Caches. `ModelDownloads.delete`, `deleteRepo` and
+  `deleteFolder` also remove a model from the private root. Downloads an earlier version left in the app's Caches
+  are migrated into the group root as well, by the Caches migration above. The group root is excluded from
+  backup like any storage root.
+- **The e5 bundle moves.** Each folder under `AuraLocal/embeddings` (multilingual-e5-small) moves as one unit. A
+  private bundle stays when the group already has one with that name, and it is not read.
+- **Records are copied once.** The first access of `DownloadRecords.standard` adds the records this app kept in
+  `UserDefaults.standard` (`dev.auralocal.downloadRecords`, and the Model Finder's old `downloadRecords`) to the
+  shared file. Keys the file already has keep its version. `CoreMLDiffusionModelStore.standard` does the same for
+  `dev.auralocal.coreMLDiffusionModels`. Each then sets `<key>.mergedIntoShared` in `UserDefaults.standard`, so the
+  copy runs once. The old keys stay.
+- **Conversations and the document index are copied once.** This happens before the shared database is first
+  opened in the process. The private file is opened read-only and snapshotted with `VACUUM INTO`, which includes
+  its WAL and leaves its journal mode alone. If the group has no database yet, the snapshot becomes it.
+  Otherwise its rows are added with `INSERT OR IGNORE`, over the columns both schemas have, in one
+  `BEGIN IMMEDIATE` transaction. Rows already in the group stay as they are, and the group's triggers add the new
+  ones to its full-text index. A `<file>.merged-into-group` marker is then written next to the private file, and
+  that file is never merged again, so a conversation deleted from the shared store does not come back. A failed
+  hand-off writes no marker and is retried on the next launch. For documents, see
+  [Document RAG]({{ '/guide/rag' | relative_url }}#sharing-the-library-between-apps) for the embedding-model rule.
+- **Keychain items are copied** (iOS and visionOS). During `configure`, every item of service
+  `dev.auralocal.remote` (cloud keys, the Hugging Face token, `download.<host>` tokens) that has no copy in the
+  group's access group gets one there, and the private copy stays. If the device is locked, the copy waits, and
+  on iOS it is retried when the app returns to the foreground. Once it finished it never runs again, and reads
+  look only in the group, so a key deleted in one app does not come back from another app's private copy.
+
+{: .warning }
+> **Older builds of the same app lose the moved models.** Models move, they are not copied. After the first launch
+> of a build that configures the group, an older build of the same app on the same device no longer finds the
+> moved models or the e5 bundle. Its `registerDownloaded()` drops their records from its own `UserDefaults`. If
+> its private index was built with e5, its `DocsTab` falls back to TF-IDF and re-embeds that index. Its
+> conversations, document index, records and keychain items are still there. Conversations, documents and
+> records it writes afterwards stay private, because the markers and flags above prevent a second merge.
+
+**Change signal.** `TonamoxSharedStorage.didChangeNotification` is posted on the main queue, and
+`TonamoxSharedStorage.change(of:)` reads its kind:
+
+- `.models`: posted after a download finishes (`ModelDownloads.download` and `downloadFolder`,
+  `GGUFModelDownloader`, the MLX load path), after `delete`, `deleteRepo` and `deleteFolder`, after a change to
+  `DownloadRecords` or `CoreMLDiffusionModelStore`, and after `DocsTab` imports an embedding model.
+- `.conversations`: posted after every `ConversationStore` write.
+- `.documents`: posted after `DocumentLibrary` stores a new document, removes one, or re-embeds the index.
+
+With a group, the signal is a Darwin notification named `<identifier>.<kind>`. Every running process of the group
+receives it, this one included. Darwin names carry no payload and are system-wide, so receivers re-read the data.
+Without a group, the notification is posted in this process only. `postChange(_:)` posts one yourself.
+
+A suspended app receives none of these signals, so refresh when the scene becomes active as well. TonamoxUI's
+`ModelDownloadCenter` reloads on `.models` (`reloadSharedState()`), and `DocsTab` reloads its list on
+`.documents`. Nothing in the SDK reacts to `.conversations`.
+
+**In the background** (iOS and iPadOS, `.appGroup`). iOS kills a suspended app that holds a file or SQLite lock in
+a shared container (`0xdead10cc`), so `configure` installs an observer. When the app enters the background,
+Tonamox begins a background task and closes the idle connections of `ConversationStore.shared` and of
+`DocumentLibrary.shared`'s index. It keeps the task while a download holds a lock, and releases those locks when
+the time runs out. Until the app is in the foreground again, every `ConversationStore` and document-index call
+opens the database, runs inside its own background task and closes it before returning. Writes are therefore not
+refused, such as the partial reply of a generation that backgrounding stopped. After a stay in the background,
+`DocumentLibrary` re-reads the index's embedding identity, because another app may have re-embedded it meanwhile.
+macOS and visionOS install no observer. In every scope, both SQLite stores wait up to 3 s (`busy_timeout`) for
+another connection's lock instead of failing at once with `SQLITE_BUSY`.
+
+Limits:
+
+- In a shared scope, `registerDownloaded()` never drops a record, because another app may hold the file in a
+  private folder this one cannot read. Explicit deletes still remove records.
+- Darwin notifications can be coalesced. A suspended app misses them.
+- On iPad, two group apps active at once can wait up to 3 s for each other's database lock. `DocumentLibrary`
+  notices another app's re-embed only after it has been in the background.
+- A document's `url` is the file it was indexed from. Another app of the group can answer from its chunks, but
+  may not be able to open that file.
+- Models in the group container stay when one app of the group is deleted. iOS removes the container only once
+  every app of the group is gone.
+- Not yet verified on a device: provisioning of the group, the migration of real multi-gigabyte models, and the
+  close on background. `0xdead10cc` does not occur in the Simulator.
+
 ### SHA-256 verification
 
 Hugging Face publishes a SHA-256 for every LFS file (`lfs.oid`). Each download path Tonamox runs compares it with
@@ -798,7 +983,9 @@ A model built from a search result (`CatalogEntry.decodedModel()`) is not in the
 An uncensored one is listed only by `Model.allModels` and `Model.uncensoredModels` even then, not by those
 collections.
 `DownloadRecords` keeps the sized `Model` in `UserDefaults` (key `dev.auralocal.downloadRecords`) so it can be
-registered again at launch:
+registered again at launch. Once `TonamoxSharedStorage.configure(appGroup:)` has applied a scope, the records are kept
+in `AuraLocal/download-records.json` instead, which every app of the group reads (see
+[Sharing storage between apps](#sharing-storage-between-apps-app-group)):
 
 ```swift
 DownloadRecords.standard.remember(model)          // when the download starts, so a partial resumes sized
@@ -818,7 +1005,8 @@ DownloadRecords.standard.remove(model)
   another id replaces the old record.
 - `registerDownloaded()` registers only what is fully on disk. It drops a record when neither the file nor a
   `.partial` is left (deleted, or purged from Caches before migration) and keeps it while a partial exists, so
-  Resume stays sized.
+  Resume stays sized. With shared records it drops nothing, since another app may hold the file where this one
+  cannot see it.
 - A record for a file a registry entry already points at (same repo, format and GGUF filename) is not registered:
   that entry loads the same file, and a second id would list it twice.
 - `ModelRegistry.unregister(id:)` removes only models added with `register(_:)`; bundled and remote catalog
@@ -827,7 +1015,8 @@ DownloadRecords.standard.remove(model)
   always rates as fitting.
 - TonamoxUI's `ModelDownloadCenter` does all of this for the browser views: it records downloads started from a
   search result and recorded files it resumes, never a catalog or unsized model. The Model Finder's old
-  `downloadRecords` key is copied over once.
+  `downloadRecords` key is copied over once. On every `.models` change signal, `reloadSharedState()` registers
+  the records that appeared and unregisters the models it listed whose record another app deleted.
 
 Limits: no background `URLSession`; MLX can't run on the Simulator; on the Simulator "this device" is the Mac's memory; the extra EOS
 tokens some MLX catalog entries get (`MLXBackend.configuration(for:)`) are keyed by catalog id, so an MLX repo
@@ -959,7 +1148,7 @@ let runnableUncensored = Model.uncensoredModels.filter { model in
 
 Models are kept after download and reused across app launches:
 
-| Format | Path (`<root>` is `ModelStorage.rootDirectory`, `<Application Support>/AuraLocal/Models`) |
+| Format | Path (`<root>` is `ModelStorage.rootDirectory`, `<Application Support>/AuraLocal/Models`, in the App Group's container once one is configured) |
 |--------|-----------|
 | MLX | `<root>/huggingface/hub/models--<sanitized>/snapshots/main/` (loadable once `.complete` exists) |
 | GGUF | `<root>/models/<repoID>/<filename>.gguf` |

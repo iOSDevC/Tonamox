@@ -35,8 +35,8 @@ public struct HuggingFaceTokenSection: View {
             Text("""
                 Needed only for gated or private repos: accept the license on the repo page first, then create a \
                 read token. GGUF and MLX downloads and the compatibility check send it to huggingface.co only. \
-                Stored in this app's Keychain on this device; other apps can't read it. Search stays anonymous, \
-                so private repos don't appear in results.
+                Stored in the Keychain on this device and never synced. Apps that share Tonamox storage through \
+                an App Group read the same token. Search stays anonymous, so private repos don't appear in results.
                 """)
         }
         .onAppear { hasToken = KeychainDownloadAuth.hasHuggingFaceToken }

@@ -134,16 +134,21 @@ let output = try await engine.generate(DiffusionRequest(prompt: "a lighthouse at
   factor was measured on FLUX, not Core ML, so it is an estimate here. fp16 SD 2.x folders (about 2.5 GB)
   come out **Tight** against the `DevicePreset.iPhone17Pro` budget (6.4 GB, a third-party figure); only a run
   on the device shows the real peak.
-- **Persistence.** `CoreMLDiffusionModelStore` keeps adopted models in `UserDefaults`; `all` lists the built-in
-  model first, then the records by display name, and the built-in model is never stored. Call `remember(_:)` when
-  a download starts, so a partial download is listed after a relaunch; `forget(_:)` drops a record and leaves the
-  files (`delete()` removes them). The model id leaves the revision out, so adopting a newer commit of the
-  same folder replaces the record. Adopting the built-in model's own folder gives `stableDiffusion21Base` at
+- **Persistence.** `CoreMLDiffusionModelStore` keeps adopted models in `UserDefaults`. Once
+  `TonamoxSharedStorage.configure(appGroup:)` has applied a scope, it keeps them in
+  `AuraLocal/image-model-records.json` instead, which every app of the group reads; the first shared access copies
+  the app's own records into it once (see
+  [Sharing storage between apps]({{ '/guide/models' | relative_url }}#sharing-storage-between-apps-app-group)).
+  `all` lists the built-in model first, then the records by display name, and the built-in model is never stored.
+  Call `remember(_:)` when a download starts, so a partial download is listed after a relaunch; `forget(_:)` drops
+  a record and leaves the files (`delete()` removes them). The model id leaves the revision out, so adopting a
+  newer commit of the same folder replaces the record. Adopting the built-in model's own folder gives `stableDiffusion21Base` at
   its pinned revision, since both would share one folder on disk. Files on disk stay the source of truth
   (`isDownloaded`).
 - **Deleting.** `CoreMLDiffusionModel.delete()` removes the folder's downloaded and partial files, in the storage
-  root and in Caches. Core ML keeps
-  its compiled copy of a model in a system-managed cache that this does not touch. In one Mac test a GPU
+  root, in the app's private root when storage is shared, and in Caches. While a download of the repo holds its
+  lock, in this app or another one, it throws `ModelFilesInUseError` and deletes nothing. Core ML keeps its
+  compiled copy of a model in a system-managed cache that this does not touch. In one Mac test a GPU
   model with a 0.89 GB download left about 1.9 GB there.
 - **What leaves the device.** The search text and repo ids, sent to huggingface.co, and then the download.
   The inspector's requests carry no Hugging Face token, cookie or `Authorization` header, and the download sends

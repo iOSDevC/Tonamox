@@ -78,6 +78,10 @@ struct ContentView: View {
         .background(KeyboardDismissOnTap())
         #endif
         .onChange(of: selectedTab) { _, tab in storedTab = tab }
+        .onSharedStorageChange([.models]) {
+            ModelDownloadCenter.shared.reloadSharedState()
+            imageState.reloadModels()
+        }
     }
 }
 

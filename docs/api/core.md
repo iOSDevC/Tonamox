@@ -562,6 +562,13 @@ var isDownloading: Bool { get }          // false while paused
 SQLite-backed store for persistent chat history. Actor-isolated.
 Guide: [Conversations & History]({{ '/guide/conversations' | relative_url }}).
 
+The default store (`shared`, or `directory: nil`) is in the App Group's container once
+`TonamoxSharedStorage.configure(appGroup:)` applied one, and copies the app's private history in once (see
+[TonamoxSharedStorage](#tonamoxsharedstorage)). Connections wait up to 3 s for another connection's lock
+(`busy_timeout`). While an App Group app is in the background (iOS), each call opens the database, runs inside its own
+background task and closes it again; the default store also closes its idle connection on entering the background.
+Every write posts `TonamoxSharedStorage.didChangeNotification` with `.conversations`.
+
 ```swift
 public actor ConversationStore
 static let shared: ConversationStore
@@ -580,9 +587,10 @@ func deleteConversation(id: UUID) async throws
 ### Messages
 
 ```swift
-init(directory: URL? = nil)                   // nil = Application Support/AuraLocal/conversations.sqlite
-// open() also runs on first use. On a store from an earlier version it replaces the full-text triggers and
-// rebuilds the search index once.
+init(directory: URL? = nil)                   // nil = <Application Support>/AuraLocal/conversations.sqlite, in the
+                                              // App Group's container once one is configured
+// Optional: every call opens the database when needed. On a store from an earlier version it replaces the
+// full-text triggers and rebuilds the search index once.
 func open() async throws
 func close() async
 @discardableResult func appendTurn(_ turn: Turn) async throws -> Turn
@@ -1140,13 +1148,17 @@ func loadCachedRemote(maxAge: TimeInterval = 86_400)
 ### ModelStorage
 
 Where downloaded weights live: `<Application Support>/AuraLocal/Models`, excluded from backup. Inside the app
-container on iOS and in a sandboxed Mac app; `~/Library/Application Support/AuraLocal/Models`, shared, for a
-non-sandboxed macOS process (the `tonamox` CLI, an app without App Sandbox). Guide:
-[Where models are stored]({{ '/guide/models' | relative_url }}#where-models-are-stored).
+container on iOS and in a sandboxed Mac app, or inside the App Group's container once
+`TonamoxSharedStorage.configure(appGroup:)` applied one; `~/Library/Application Support/AuraLocal/Models`, shared, for a
+non-sandboxed macOS process (the `tonamox` CLI, an app without App Sandbox), configured or not. In an App Group the
+app's private root is merged in at `configure` (renames only) and stays a read fallback. Guides:
+[Where models are stored]({{ '/guide/models' | relative_url }}#where-models-are-stored),
+[Sharing storage between apps]({{ '/guide/models' | relative_url }}#sharing-storage-between-apps-app-group).
 
 ```swift
 public enum ModelStorage {
     static var rootDirectory: URL     // first access creates it, excludes it from backup, migrates Caches when sandboxed
+                                      // (and, in an App Group, the app's private root)
     // Renames Tonamox's downloads out of Caches (never copies, never overwrites); idempotent
     @discardableResult static func migrateLegacyDownloads() -> ModelStorageMigration
 }
@@ -1155,6 +1167,9 @@ public struct ModelStorageMigration: Sendable, Equatable {
     let moved: [String]               // paths relative to the roots, now in the storage root
     let conflicts: [String]           // left in Caches: the storage root already has that path
     let failures: [String]            // left in Caches: the rename failed; still read from there
+    let duplicatesRemoved: [String]   // App Group merge only: source copies deleted because the group holds an
+                                      // identical finished copy; always empty from migrateLegacyDownloads()
+    init(moved: [String], conflicts: [String], failures: [String], duplicatesRemoved: [String] = [])
     var isEmpty: Bool
 }
 ```
@@ -1179,8 +1194,10 @@ public enum ModelDownloads {
     // progress: (bytes on disk, total)
     static func download(_ model: Model, auth: any DownloadAuthorizing = KeychainDownloadAuth(),
                          progress: @escaping @Sendable (Int64, Int64) -> Void) async throws -> URL
-    static func delete(_ model: Model) throws               // finished and partial files, root and Caches; evict first
-    static func bytesOnDisk(for model: Model) -> Int64      // root and Caches
+    // Finished and partial files: storage root, the app's private root in an App Group, Caches. Evict first.
+    // Throws ModelFilesInUseError, deleting nothing, while a download (any process) holds the model's lock.
+    static func delete(_ model: Model) throws
+    static func bytesOnDisk(for model: Model) -> Int64      // every root models are read from
     static func availableDiskBytes() -> Int64?              // download needs the remaining bytes + 20%
     static func verifiedSHA256(of file: URL) -> String?     // what a download verified the file against; nil = unverified
 
@@ -1196,6 +1213,7 @@ public enum ModelDownloads {
     static func deleteRepo(_ repoID: String) throws                   // models--org--repo: every folder, finished and partial
     static func deleteFolder(repoID: String, folder: String) throws   // one folder with its partials and markers, then the
                                                                       // parents it leaves empty; other folders stay
+    // deleteRepo and deleteFolder throw ModelFilesInUseError while a download holds the repo's snapshot lock
 }
 
 public struct DownloadPlan: Sendable, Equatable {
@@ -1221,6 +1239,12 @@ public enum ModelIntegrityError: LocalizedError, Equatable, Sendable {
 public enum DownloadConflictError: LocalizedError, Equatable, Sendable {
     case partialChanged(path: String)   // the finished .partial was gone or resized by another writer
 }
+
+// A delete refused because a download, in this process or another one sharing the storage root, holds the lock.
+public struct ModelFilesInUseError: LocalizedError, Equatable, Sendable {
+    init(name: String)
+    let name: String                    // the file or snapshot folder, by name
+}
 ```
 
 Only single-file GGUF quants at the top level of a repo download; a split or subfolder quant, or a model
@@ -1242,7 +1266,9 @@ source of truth. See [Keeping downloads across launches]({{ '/guide/models' | re
 
 ```swift
 public struct DownloadRecords: @unchecked Sendable
-static let standard: DownloadRecords
+// UserDefaults.standard; or, once TonamoxSharedStorage.configure(appGroup:) applied a scope, the shared file
+// AuraLocal/download-records.json, into which the first access copies this app's UserDefaults records once.
+static var standard: DownloadRecords { get }
 init(defaults: UserDefaults = .standard)
 static func key(for model: Model) -> String            // "gguf:<repo>/<file>" or "mlx:<repo>"
 func remember(_ model: Model)                           // replaces any record for the same file
@@ -1257,7 +1283,9 @@ func remove(_ model: Model)                             // forget + ModelRegistr
 
 A record whose file a registry entry already points at is not registered, so one file never shows twice in the
 pickers. Each read-modify-write of the stored dictionary holds a lock, so calls from several threads don't drop
-records.
+records; the shared file is also held under a `flock` (`AuraLocal/records.lock`) across processes and replaced
+atomically. With the shared file, `registerDownloaded()` drops no records. A write that changes the records posts
+`TonamoxSharedStorage.didChangeNotification` with `.models` (in this process only when no group is configured).
 
 ### Download on demand
 
@@ -1324,6 +1352,63 @@ backends load them from, and tracks models by file (`DownloadRecords.key(for:)`)
 `ModelDownloadCenter` counts its downloads as busy (a catalog row or the Hugging Face browser does not start the
 same file, Delete refuses it) and folds its `revision` into its own. The reverse is not checked: a placeholder
 can start a file that `ModelDownloadCenter` or a `ModelManager.load` is already downloading.
+
+---
+
+## TonamoxSharedStorage
+
+Opt-in sharing of models, download and image-model records, conversations, the document index, the e5 bundle and
+(iOS, visionOS) keychain items between the apps of one App Group. Without `configure(appGroup:)` every path stays
+as it was. Guides: [Sharing storage between apps]({{ '/guide/models' | relative_url }}#sharing-storage-between-apps-app-group),
+[Installation › App Groups]({{ '/guide/installation' | relative_url }}#app-groups-sharing-storage-between-apps).
+
+```swift
+public enum TonamoxSharedStorage {
+    // Call first in App.init. The first storage access (ModelStorage, DownloadRecords.standard,
+    // CoreMLDiffusionModelStore.standard, KeychainStore, ConversationStore.shared, DocumentLibrary.shared,
+    // AutoEmbeddingProvider.defaultModelBundleURL, scope) fixes the configuration; a later call changes nothing.
+    @MainActor @discardableResult
+    static func configure(appGroup identifier: String) -> SharedStorageConfiguration
+    static var scope: SharedStorageScope { get }        // reading it fixes the configuration too
+    static let didChangeNotification: Notification.Name // "dev.auralocal.sharedStorage.didChange", main queue
+    static func change(of notification: Notification) -> SharedStorageChange?
+    static func postChange(_ change: SharedStorageChange)  // Darwin post to the group, or in-process without one
+}
+
+public enum SharedStorageScope: Sendable, Equatable {
+    case standard                                         // not configured, or the group did not resolve
+    case appGroup(identifier: String, container: URL)     // iOS/visionOS, or a sandboxed Mac app with the entitlement
+    case userWide(identifier: String)                     // a Mac process without App Sandbox
+}
+
+public enum SharedStorageConfiguration: Sendable, Equatable {
+    case applied(SharedStorageScope)
+    case unavailable(appGroup: String)                    // no entitlement or no container; scope stays .standard
+    case ignored(current: SharedStorageScope, firstUse: String)  // storage already used, or another group configured
+}
+
+public enum SharedStorageChange: String, Sendable, CaseIterable {
+    case models, conversations, documents
+}
+```
+
+- **Idempotent.** The same identifier again returns the first result; another identifier returns `.ignored`, with
+  `firstUse` set to `"configure(appGroup: <first>)"`. A call after storage was used returns `.ignored` with the name
+  of what used it, and logs a fault (`dev.auralocal`, category `SharedStorage`).
+- **At `configure`** (`.appGroup`): the app's private models and e5 bundles are renamed into the group (on the main
+  thread; renames, attribute reads and the removal of identical private copies only), the keychain items are copied
+  into the group's access group (iOS, visionOS), the Darwin observers are registered, and on iOS the background
+  observer is installed. Records, conversations and the document index are copied on their first access.
+  `.userWide` registers the observers and copies the records only.
+- **Change signal.** With a group, `postChange` sends the Darwin notification `<identifier>.<change>`, which
+  every running process of the group, this one included, re-posts as `didChangeNotification` on the main queue.
+  Without one it posts `didChangeNotification` in this process only. Tonamox posts `.models` after downloads,
+  deletes and record changes, `.conversations` after every `ConversationStore` write, and `.documents` after
+  `DocumentLibrary` adds, removes or re-embeds. A suspended app misses Darwin notifications.
+- **Background** (iOS and iPadOS, `.appGroup`): entering the background closes the shared SQLite stores'
+  idle connections inside a background task, which is kept while a download holds a lock; the locks are released
+  when the time runs out. Until the app returns, every `ConversationStore` and document-index call opens, runs in its
+  own background task and closes. macOS and visionOS have no background hooks.
 
 ---
 
@@ -1813,11 +1898,15 @@ A `baseURL` host that is loopback, private (RFC 1918, IPv6 ULA), link-local, `lo
 // (Hugging Face token for gated repos, KeychainDownloadAuth.huggingFaceAccount; also used by
 // ModelCompatibilityChecker) · "download.<host>" (bearer token for any other download host).
 // "cloud.github-models" is no longer read (GitHub Models was retired).
+// iOS/visionOS with an App Group configured: save writes to the group's access group; the app's existing items
+// are copied into the group once, ever (the private copies stay); until that copy finished read and hasKey fall
+// back to any group the app has, afterwards they read the group only; delete removes every copy the app can
+// reach. macOS: unchanged (login keychain, no access groups).
 public enum KeychainStore {
     static func save(_ key: String, for account: String) throws
     static func read(for account: String) -> String?
-    static func delete(for account: String)
-    static func hasKey(for account: String) -> Bool
+    static func delete(for account: String)                 // every copy in the access groups the app has
+    static func hasKey(for account: String) -> Bool         // attributes only; never reads the secret
 }
 // KeychainDownloadAuth.saveHuggingFaceToken(_:) (trims; throws on empty), .deleteHuggingFaceToken(),
 // .hasHuggingFaceToken

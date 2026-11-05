@@ -54,6 +54,9 @@ struct ChatConversationsSheet: View {
             }
             .navigationTitle("Conversations")
             .task { await vm.loadConversations() }
+            .onSharedStorageChange([.conversations]) {
+                Task { await vm.loadConversations() }
+            }
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif

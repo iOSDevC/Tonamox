@@ -74,6 +74,11 @@ public struct Conversation: Identifiable, Codable, Sendable, Equatable {
 /// All read/write operations are async and actor-isolated.
 /// The store is safe to share across the app — use `ConversationStore.shared`.
 ///
+/// With ``TonamoxSharedStorage/configure(appGroup:)`` the default store lives in the App Group, so every app of the
+/// group sees one history; the app's private history is merged in on first use and its file is kept. While an App
+/// Group app is in the background each call opens the database, runs inside its own background task and closes it
+/// again, so no SQLite lock is held when iOS suspends the app.
+///
 /// ```swift
 /// // Create a conversation
 /// var conv = try await ConversationStore.shared.createConversation(model: .qwen3_1_7b)
@@ -95,37 +100,123 @@ public actor ConversationStore {
     
     private var db: OpaquePointer?
     private let dbURL: URL
+    /// The app's private database, merged into ``dbURL`` once when storage is shared.
+    private let legacyURL: URL?
+    private let suspension: SharedStorageSuspension
+    private let registersForSuspension: Bool
+    private var suspensionHandlerID: UUID?
+    private var legacyHandled = false
     
     // MARK: - Init
     
+    /// - Parameter directory: where `conversations.sqlite` lives. `nil` uses `<Application Support>/AuraLocal`,
+    ///   which is the App Group's once ``TonamoxSharedStorage/configure(appGroup:)`` applied one.
     public init(directory: URL? = nil) {
-        let base = directory ?? FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("AuraLocal", isDirectory: true)
-        
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        self.dbURL = base.appendingPathComponent("conversations.sqlite")
+        if let directory {
+            self.init(directory: directory, legacyDirectory: nil, suspension: nil)
+        } else {
+            let resolution = TonamoxSharedStorage.resolution(for: .conversations)
+            let shared = resolution.privateAuraLocalDirectory != nil
+            self.init(directory: resolution.auraLocalDirectory, legacyDirectory: resolution.privateAuraLocalDirectory,
+                      suspension: shared ? .live : nil)
+        }
+    }
+
+    /// `suspension` non-`nil` registers a handler that closes the connection when the app enters the background.
+    init(directory: URL, legacyDirectory: URL?, suspension: SharedStorageSuspension?) {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        self.dbURL = directory.appending(path: "conversations.sqlite")
+        self.legacyURL = legacyDirectory?.appending(path: "conversations.sqlite")
+        self.suspension = suspension ?? .live
+        self.registersForSuspension = suspension != nil
+    }
+
+    deinit {
+        if let suspensionHandlerID { suspension.removeHandler(suspensionHandlerID) }
     }
     
     // MARK: - Lifecycle
     
-    /// Open the database and apply migrations. Must be called once before use.
+    /// Open the database and apply migrations. Optional: every call opens it when needed.
     public func open() throws {
-        guard db == nil else { return }
-        if sqlite3_open(dbURL.path, &db) != SQLITE_OK {
-            throw StoreError.cannotOpen(dbURL.path)
-        }
-        // WAL mode enables concurrent reads during writes — prevents SQLITE_BUSY
-        // when the voice pipeline writes turns while the UI reads conversation lists.
-        sqlite3_exec(db, "PRAGMA journal_mode = WAL;", nil, nil, nil)
-        sqlite3_exec(db, "PRAGMA synchronous = NORMAL;", nil, nil, nil)
-        try migrate()
+        try withDatabase {}
     }
     
     /// Close the database connection.
     public func close() {
         if let db { sqlite3_close(db) }
         db = nil
+    }
+
+    private func openConnection() throws {
+        guard db == nil else { return }
+        handOffLegacyDatabaseOnce()
+        registerForSuspensionOnce()
+        let path = dbURL.path(percentEncoded: false)
+        if sqlite3_open(path, &db) != SQLITE_OK {
+            close()
+            throw StoreError.cannotOpen(path)
+        }
+        // Another app of the group may hold the lock; set before the WAL switch, which needs it too.
+        sqlite3_busy_timeout(db, SQLiteHandoff.busyTimeoutMilliseconds)
+        // WAL mode enables concurrent reads during writes — prevents SQLITE_BUSY
+        // when the voice pipeline writes turns while the UI reads conversation lists.
+        sqlite3_exec(db, "PRAGMA journal_mode = WAL;", nil, nil, nil)
+        sqlite3_exec(db, "PRAGMA synchronous = NORMAL;", nil, nil, nil)
+        do {
+            try migrate()
+        } catch {
+            close()
+            throw error
+        }
+    }
+
+    /// Runs before the shared file is first opened here, so a missing shared file can become the private copy.
+    private func handOffLegacyDatabaseOnce() {
+        guard let legacyURL, !legacyHandled else { return }
+        legacyHandled = true
+        SQLiteHandoff.handOff(legacy: legacyURL, into: dbURL,
+                              tables: [SQLiteHandoff.Table("conversations"), SQLiteHandoff.Table("turns")])
+    }
+
+    private func registerForSuspensionOnce() {
+        guard registersForSuspension, suspensionHandlerID == nil else { return }
+        suspensionHandlerID = suspension.addHandler { [weak self] in
+            await self?.closeForSuspension()
+        }
+    }
+
+    private func closeForSuspension() {
+        guard db != nil else { return }
+        close()
+        TonamoxSharedStorage.log.info("conversations.sqlite closed for suspension")
+    }
+
+    /// Opens the database for `body`. While the app is in the background, the call also runs inside its own
+    /// background task and closes the database before returning.
+    private func withDatabase<T>(_ body: () throws -> T) throws -> T {
+        try suspension.performInBackgroundTask(named: "Tonamox conversations") {
+            try openConnection()
+            defer { if suspension.isSuspended { close() } }
+            return try body()
+        }
+    }
+
+    /// Runs `body` and signals the change to the other apps of the group.
+    private func mutating<T>(_ body: () throws -> T) throws -> T {
+        let result = try withDatabase(body)
+        TonamoxSharedStorage.postChange(.conversations)
+        return result
+    }
+
+    // MARK: - Test hooks
+
+    var isOpen: Bool { db != nil }
+
+    func busyTimeout() throws -> Int {
+        try withDatabase {
+            try query("PRAGMA busy_timeout;") { Int(sqlite3_column_int64($0, 0)) }.first ?? 0
+        }
     }
     
     // MARK: - Conversations
@@ -136,55 +227,60 @@ public actor ConversationStore {
         model: Model,
         title: String = "New conversation"
     ) throws -> Conversation {
-        try ensureOpen()
-        let conv = Conversation(title: title, model: model.rawValue)
-        let sql = """
-            INSERT INTO conversations (id, title, model, created_at, updated_at, turn_count)
-            VALUES (?, ?, ?, ?, ?, 0);
-            """
-        try exec(sql, bindings: [
-            conv.id.uuidString,
-            conv.title,
-            conv.model,
-            iso(conv.createdAt),
-            iso(conv.updatedAt)
-        ])
-        return conv
+        try mutating {
+            let conv = Conversation(title: title, model: model.rawValue)
+            let sql = """
+                INSERT INTO conversations (id, title, model, created_at, updated_at, turn_count)
+                VALUES (?, ?, ?, ?, ?, 0);
+                """
+            try exec(sql, bindings: [
+                conv.id.uuidString,
+                conv.title,
+                conv.model,
+                iso(conv.createdAt),
+                iso(conv.updatedAt)
+            ])
+            return conv
+        }
     }
     
     /// Fetch all conversations ordered by most recently updated.
     public func allConversations() throws -> [Conversation] {
-        try ensureOpen()
-        return try query(
-            "SELECT * FROM conversations ORDER BY updated_at DESC;",
-            map: rowToConversation
-        )
+        try withDatabase {
+            try query(
+                "SELECT * FROM conversations ORDER BY updated_at DESC;",
+                map: rowToConversation
+            )
+        }
     }
     
     /// Fetch a single conversation by ID.
     public func conversation(id: UUID) throws -> Conversation? {
-        try ensureOpen()
-        return try query(
-            "SELECT * FROM conversations WHERE id = ? LIMIT 1;",
-            bindings: [id.uuidString],
-            map: rowToConversation
-        ).first
+        try withDatabase {
+            try query(
+                "SELECT * FROM conversations WHERE id = ? LIMIT 1;",
+                bindings: [id.uuidString],
+                map: rowToConversation
+            ).first
+        }
     }
     
     /// Update a conversation's title.
     public func updateTitle(_ title: String, for id: UUID) throws {
-        try ensureOpen()
-        try exec(
-            "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?;",
-            bindings: [title, iso(Date()), id.uuidString]
-        )
+        try mutating {
+            try exec(
+                "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?;",
+                bindings: [title, iso(Date()), id.uuidString]
+            )
+        }
     }
     
     /// Delete a conversation and all its turns.
     public func deleteConversation(id: UUID) throws {
-        try ensureOpen()
-        try exec("DELETE FROM turns WHERE conversation_id = ?;", bindings: [id.uuidString])
-        try exec("DELETE FROM conversations WHERE id = ?;", bindings: [id.uuidString])
+        try mutating {
+            try exec("DELETE FROM turns WHERE conversation_id = ?;", bindings: [id.uuidString])
+            try exec("DELETE FROM conversations WHERE id = ?;", bindings: [id.uuidString])
+        }
     }
     
     // MARK: - Turns
@@ -192,7 +288,11 @@ public actor ConversationStore {
     /// Append a turn to a conversation.
     @discardableResult
     public func appendTurn(_ turn: Turn) throws -> Turn {
-        try ensureOpen()
+        try mutating { try insertTurn(turn) }
+    }
+
+    @discardableResult
+    private func insertTurn(_ turn: Turn) throws -> Turn {
         let sql = """
             INSERT INTO turns (id, conversation_id, role, content, created_at, token_estimate)
             VALUES (?, ?, ?, ?, ?, ?);
@@ -219,25 +319,27 @@ public actor ConversationStore {
     
     /// Load all turns for a conversation in chronological order.
     public func turns(for conversationID: UUID) throws -> [Turn] {
-        try ensureOpen()
-        return try query(
-            "SELECT * FROM turns WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC;",
-            bindings: [conversationID.uuidString],
-            map: rowToTurn
-        )
+        try withDatabase {
+            try query(
+                "SELECT * FROM turns WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC;",
+                bindings: [conversationID.uuidString],
+                map: rowToTurn
+            )
+        }
     }
     
     /// Delete a single turn.
     public func deleteTurn(id: UUID) throws {
-        try ensureOpen()
-        try exec(
-            """
-            UPDATE conversations SET turn_count = MAX(turn_count - 1, 0)
-            WHERE id = (SELECT conversation_id FROM turns WHERE id = ?);
-            """,
-            bindings: [id.uuidString]
-        )
-        try exec("DELETE FROM turns WHERE id = ?;", bindings: [id.uuidString])
+        try mutating {
+            try exec(
+                """
+                UPDATE conversations SET turn_count = MAX(turn_count - 1, 0)
+                WHERE id = (SELECT conversation_id FROM turns WHERE id = ?);
+                """,
+                bindings: [id.uuidString]
+            )
+            try exec("DELETE FROM turns WHERE id = ?;", bindings: [id.uuidString])
+        }
     }
     
     // MARK: - Context Window
@@ -255,8 +357,10 @@ public actor ConversationStore {
     static let contextAnchorStride = 4
 
     public func contextWindow(for conversationID: UUID, maxTokens: Int = 2048) throws -> [Turn] {
-        try ensureOpen()
-        
+        try withDatabase { try buildContextWindow(for: conversationID, maxTokens: maxTokens) }
+    }
+
+    private func buildContextWindow(for conversationID: UUID, maxTokens: Int) throws -> [Turn] {
         // Always include system turns first
         let systemTurns = try query(
             "SELECT * FROM turns WHERE conversation_id = ? AND role = 'system' ORDER BY created_at ASC, rowid ASC;",
@@ -316,8 +420,10 @@ public actor ConversationStore {
         keepLastN: Int = 10,
         summary: String
     ) throws {
-        try ensureOpen()
-        
+        try mutating { try prune(conversationID: conversationID, keepLastN: keepLastN, summary: summary) }
+    }
+
+    private func prune(conversationID: UUID, keepLastN: Int, summary: String) throws {
         // Find the IDs of turns to prune (all except last N non-system turns)
         let allTurns = try query(
             "SELECT * FROM turns WHERE conversation_id = ? AND role != 'system' ORDER BY created_at ASC, rowid ASC;",
@@ -338,7 +444,7 @@ public actor ConversationStore {
             content: "[Summary of earlier conversation]: \(summary)",
             createdAt: oldestKeptDate.addingTimeInterval(-1)
         )
-        try appendTurn(summaryTurn)
+        try insertTurn(summaryTurn)
         
         // Delete pruned turns
         let placeholders = toPrune.map { _ in "?" }.joined(separator: ",")
@@ -359,7 +465,10 @@ public actor ConversationStore {
     
     /// Full-text search across turn content using SQLite FTS5.
     public func search(_ query: String, limit: Int = 20) throws -> [Turn] {
-        try ensureOpen()
+        try withDatabase { try fullTextSearch(query, limit: limit) }
+    }
+
+    private func fullTextSearch(_ query: String, limit: Int) throws -> [Turn] {
         // Sanitize for FTS5: wrap each token in double quotes to treat as literal,
         // preventing FTS5 operators (NEAR, NOT, *, ^) from altering query semantics.
         let safe = query
@@ -380,7 +489,10 @@ public actor ConversationStore {
     /// prefixed "AgentCrew:"), so cross-task recall never surfaces the user's
     /// private direct-chat turns. System turns are excluded. Query is FTS5-sanitized.
     public func searchAgentMemory(_ query: String, limit: Int = 8) throws -> [Turn] {
-        try ensureOpen()
+        try withDatabase { try agentMemorySearch(query, limit: limit) }
+    }
+
+    private func agentMemorySearch(_ query: String, limit: Int) throws -> [Turn] {
         let safe = query
             .components(separatedBy: .whitespacesAndNewlines)
             .map { $0.replacingOccurrences(of: "\"", with: "\"\"") }
@@ -411,7 +523,10 @@ public actor ConversationStore {
     }
     
     public func stats(for conversationID: UUID) throws -> ConversationStats {
-        try ensureOpen()
+        try withDatabase { conversationStats(for: conversationID) }
+    }
+
+    private func conversationStats(for conversationID: UUID) -> ConversationStats {
         var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt) }
         
@@ -499,10 +614,6 @@ public actor ConversationStore {
     
     // MARK: - SQLite helpers
     
-    private func ensureOpen() throws {
-        if db == nil { try open() }
-    }
-
     private func inTransaction(_ work: () throws -> Void) throws {
         try exec("BEGIN TRANSACTION;")
         do {

@@ -146,8 +146,8 @@ brings its own navigation container, so they fit a `NavigationStack`, a `Navigat
 | `HFModelSearchList` | `init(search:selection:)`. Search field, format filter (starts on GGUF on the Simulator), sort, device picker (only with more than one device), **Compatible only**, and a verdict badge per row. Selecting a row sets `selection` to its repo id. |
 | `HFRepoDetailView` | `init(repoID:search:)`. Fetches the repo if needed and shows the findings, per-quant fits, license and gating, plus a **Download** section for repos rated runnable: quant picker, size and free space, progress, Cancel/Resume, **Try it** (load, one 32-token reply, unload). A key button and the gated error open the token form. |
 | `DownloadedModelsList` | `init()`. Everything on disk under the model storage root and the Caches folder earlier versions used, finished or paused, with Try it, Resume, Cancel and Delete (unload every model reading the file, files, record, registry), plus the keep-awake switch. Try it and Resume are off for a file whose size is unknown (no record or catalog entry). A paused `.partial` whose finished file is already on disk (left in Caches by an older build) shows as **Leftover**: no Resume, and Delete removes only that partial. Sets the title "Downloads". |
-| `ModelDownloadCenter` | `ModelDownloadCenter.shared`: the single running download. `revision` changes whenever models are downloaded, deleted or registered, here or through a download placeholder (`OnDemandDownloads`); `keepsScreenAwake`; `isBusy`. `isDownloading(_:)` says whether this center, a `ModelSection` row or a download placeholder is writing a model's file; `delete(_:)` unloads every model reading that file, removes its finished and partial files, forgets its record and unregisters a model added from search (catalog models stay registered), and throws while a download writes the file. It records each download started from a search result with `DownloadRecords` and registers it when it finishes; resuming a catalog file does not record it (see [Keeping downloads across launches]({{ '/guide/models' | relative_url }}#keeping-downloads-across-launches)). |
-| `HuggingFaceTokenSection` | `init()`. Two `Form` sections that save, show and remove the read token for gated repos (`KeychainDownloadAuth`). |
+| `ModelDownloadCenter` | `ModelDownloadCenter.shared`: the single running download. `revision` changes whenever models are downloaded, deleted or registered, here or through a download placeholder (`OnDemandDownloads`); `keepsScreenAwake`; `isBusy`. `isDownloading(_:)` says whether this center, a `ModelSection` row or a download placeholder is writing a model's file; `delete(_:)` unloads every model reading that file, removes its finished and partial files, forgets its record and unregisters a model added from search (catalog models stay registered), and throws while a download writes the file. It records each download started from a search result with `DownloadRecords` and registers it when it finishes; resuming a catalog file does not record it (see [Keeping downloads across launches]({{ '/guide/models' | relative_url }}#keeping-downloads-across-launches)). `reloadSharedState()` re-reads `DownloadRecords.standard`: it registers the records that appeared, unregisters the models it listed whose record is gone (another app of the group deleted them), and bumps `revision`. The center calls it on every `TonamoxSharedStorage.didChangeNotification` about `.models`; call it yourself when the app becomes active, since a suspended app misses those signals. |
+| `HuggingFaceTokenSection` | `init()`. Two `Form` sections that save, show and remove the read token for gated repos (`KeychainDownloadAuth`). Its note says the token stays in this device's Keychain, unsynced, and that apps sharing Tonamox storage through an App Group read the same token. |
 
 ```swift
 import SwiftUI
@@ -195,7 +195,27 @@ let chatSearch = HFModelSearch(query: "qwen", devices: [DevicePreset.thisDevice(
 ```
 
 Call `DownloadRecords.standard.registerDownloaded()` once at launch (for example in your `App`'s `init`) so models
-downloaded in an earlier run are in the pickers before the first view draws.
+downloaded in an earlier run are in the pickers before the first view draws. An app that shares storage through an
+App Group calls `TonamoxSharedStorage.configure(appGroup:)` before it, and refreshes when it becomes active:
+
+```swift
+@main
+struct MyApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        TonamoxSharedStorage.configure(appGroup: "group.com.example.apps")
+        DownloadRecords.standard.registerDownloaded()
+    }
+
+    var body: some Scene {
+        WindowGroup { ContentView() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { ModelDownloadCenter.shared.reloadSharedState() }
+            }
+    }
+}
+```
 
 Limits: one download at a time; no background downloads (about 30 s of background time, then Resume continues from
 the partial file); `ModelDownloadCenter` uses `UIApplication.shared` on iOS, so it is not

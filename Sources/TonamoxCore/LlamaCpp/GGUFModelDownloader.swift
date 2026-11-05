@@ -149,6 +149,7 @@ public final class GGUFModelDownloader: ObservableObject {
                 expectedSHA256: expectedSHA256, onProgress: onProgress)
             isDownloading = false
             onProgress("\(model.displayName) download complete")
+            TonamoxSharedStorage.postChange(.models)
             return localURL
         } catch {
             isDownloading = false

@@ -132,6 +132,56 @@ For macOS apps using GGUF models stored outside the sandbox:
 
 ---
 
+## App Groups (sharing storage between apps)
+
+Optional. Several apps of yours can share Tonamox's models, records, conversations, document index and (iOS) keys
+through one App Group. What is shared, what moves and what is copied are described in
+[Sharing storage between apps]({{ '/guide/models' | relative_url }}#sharing-storage-between-apps-app-group).
+
+1. **Entitlement.** Add the group to each app's iOS entitlements:
+
+   ```xml
+   <key>com.apple.security.application-groups</key>
+   <array>
+       <string>group.com.example.apps</string>
+   </array>
+   ```
+
+   On a device, the group must be registered for your team and included in each app's provisioning profile.
+   Automatic signing does this when the capability is enabled. Simulator builds need no profile, because the
+   Simulator reads the entitlements embedded in the binary. Keychain items need no `keychain-access-groups`
+   entry: on iOS an App Group identifier is also a keychain access group.
+2. **Configure first.** In each app, call `TonamoxSharedStorage.configure(appGroup:)` in `App.init`, before any
+   other Tonamox call. The first storage access fixes the configuration, and a later `configure` is ignored:
+
+   ```swift
+   init() {
+       let result = TonamoxSharedStorage.configure(appGroup: "group.com.example.apps")
+       // .applied(.appGroup(identifier:container:)) on iOS with the entitlement
+       // .unavailable(appGroup:) without it: storage stays private, nothing moves
+       // .ignored(current:firstUse:) if storage was already used
+       DownloadRecords.standard.registerDownloaded()
+   }
+   ```
+
+3. **Refresh.** Observe `TonamoxSharedStorage.didChangeNotification` to reload what another app changed, and
+   reload as well when the scene becomes active, because a suspended app misses these signals. TonamoxUI's
+   `ModelDownloadCenter` and TonamoxDocs' `DocsTab` already observe it.
+
+On macOS:
+
+- **App without App Sandbox:** no entitlement is needed. `configure` returns `.applied(.userWide(identifier:))`.
+  Files stay in `~/Library/Application Support`, which every process of the user already shares. Only the
+  download and image-model records change place: each app copies its own into a shared file there. TonamoxExample's Mac builds work this way and
+  carry no App Group.
+- **Sandboxed app:** the group must be in `com.apple.security.application-groups`. Tonamox reads it from the code
+  signature, and without it `configure` returns `.unavailable`. On macOS, a `group.`-prefixed identifier needs a
+  provisioning profile that includes it. Keychain items are not shared: the login keychain has no access groups.
+
+The `tonamox` CLI and `swift test` never call `configure`, so they keep the paths they have always used.
+
+---
+
 ## Permissions (Voice)
 
 If you use `TonamoxVoice`, add these keys to `Info.plist`:
@@ -173,7 +223,9 @@ Both declare no tracking, no tracking domains and no collected data. The require
 | `TonamoxCore` | User defaults | `CA92.1` | `DownloadRecords` |
 | `TonamoxImageGen` | User defaults | `CA92.1` | `CoreMLDiffusionModelStore` |
 
-The other modules use none of these APIs and ship no manifest.
+The other modules use none of these APIs and ship no manifest. With an App Group configured, `DownloadRecords`
+and `CoreMLDiffusionModelStore` still read `UserDefaults.standard`, only to copy the app's own records into the
+shared file once. That file is plain JSON, not an App Group `UserDefaults` suite, so no `1C8F.1` reason applies.
 
 **What your app declares.** Tonamox sends nothing to its developer. Hybrid escalation sends text (system prompt,
 question and compressed context) to the endpoint your app configures, after your `ConsentGate` approves it; model

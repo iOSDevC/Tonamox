@@ -7,22 +7,106 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0E0B387FAC502D6F91366376 /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = CD1D49B3621733E2DEE084CA /* TonamoxCore */; };
+		1137226B0B3BC0047E3CDE75 /* TonamoxUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3C09977CD9F653D4E7DD2BBA /* TonamoxUI */; };
+		1B77D8A9094AF9A43CF7D5FF /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = D080199B2F1C6DC6A45847A4 /* TonamoxCore */; };
+		226E6AD8CD124CF4A0F67364 /* TonamoxUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1DB67541749CC4C282A1734C /* TonamoxUI */; };
+		36BD5F6E103F8F94C84B6FC6 /* TonamoxImageGen in Frameworks */ = {isa = PBXBuildFile; productRef = 55837B9A170F16BE501433A8 /* TonamoxImageGen */; };
+		5C881EFEFEBD5B7751676E4A /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = C6D2D7985AE067FF6DDD0663 /* TonamoxCore */; };
+		63759B878EE4B76C1A12F6E5 /* TonamoxUI in Frameworks */ = {isa = PBXBuildFile; productRef = 02485AF0D3320187AD254512 /* TonamoxUI */; };
+		948E533D97EF58B7DAD414B1 /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = 25444DD40F7E110EAAB9E141 /* TonamoxCore */; };
+		A0A0A0A0A0A0A0A0A0A0A001 /* TonamoxImageGen in Frameworks */ = {isa = PBXBuildFile; productRef = A0A0A0A0A0A0A0A0A0A0A002 /* TonamoxImageGen */; };
+		BE23D9A94FFFD45B2533492D /* TonamoxDocs in Frameworks */ = {isa = PBXBuildFile; productRef = 6C0BCA944731BBAF66F7481C /* TonamoxDocs */; };
+		D132F346509031056E067945 /* TonamoxVoice in Frameworks */ = {isa = PBXBuildFile; productRef = 3DD5CDEA4499960BEA5A9FC0 /* TonamoxVoice */; };
 		FE034FF02F7CA47E0047B53B /* TonamoxAppleIntelligence in Frameworks */ = {isa = PBXBuildFile; productRef = FE034FEF2F7CA47E0047B53B /* TonamoxAppleIntelligence */; };
 		FE034FF22F7CA47E0047B53B /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = FE034FF12F7CA47E0047B53B /* TonamoxCore */; };
 		FE034FF42F7CA47E0047B53B /* TonamoxDocs in Frameworks */ = {isa = PBXBuildFile; productRef = FE034FF32F7CA47E0047B53B /* TonamoxDocs */; };
-		A0A0A0A0A0A0A0A0A0A0A001 /* TonamoxImageGen in Frameworks */ = {isa = PBXBuildFile; productRef = A0A0A0A0A0A0A0A0A0A0A002 /* TonamoxImageGen */; };
 		FE034FF62F7CA47E0047B53B /* TonamoxUI in Frameworks */ = {isa = PBXBuildFile; productRef = FE034FF52F7CA47E0047B53B /* TonamoxUI */; };
 		FE034FF82F7CA47E0047B53B /* TonamoxVoice in Frameworks */ = {isa = PBXBuildFile; productRef = FE034FF72F7CA47E0047B53B /* TonamoxVoice */; };
+		FEA6E0A100000000000000A2 /* TonamoxAgents in Frameworks */ = {isa = PBXBuildFile; productRef = FEA6E0A100000000000000A1 /* TonamoxAgents */; };
 		FED51C942F5B7B0600D5040F /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = FED51C932F5B7B0600D5040F /* TonamoxCore */; };
 		FED51CA92F5B7BA500D5040F /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = FED51CA82F5B7BA500D5040F /* TonamoxCore */; };
-		FEA6E0A100000000000000A2 /* TonamoxAgents in Frameworks */ = {isa = PBXBuildFile; productRef = FEA6E0A100000000000000A1 /* TonamoxAgents */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		3622E408132E13CFC7710CCD /* TonamoxImage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TonamoxImage.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B714A745E89DB910728A551 /* TonamoxLibrary.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TonamoxLibrary.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C7E1B482678D599E3616C2C5 /* TonamoxChat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TonamoxChat.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECDD4A720A2E57E7760866FD /* TonamoxTerminal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TonamoxTerminal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FED51C5F2F5B7A7900D5040F /* TonamoxExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TonamoxExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		096A5B5C4F7400AA66BC1C3E /* Voice */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Voice;
+			sourceTree = "<group>";
+		};
+		0BFFAED541BCA84D59E722A2 /* Image */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Image;
+			sourceTree = "<group>";
+		};
+		30E7CDB18647CEE002B5B8BF /* Common */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Common;
+			sourceTree = "<group>";
+		};
+		3CD51142BFBCB662FC02737F /* TonamoxChat */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TonamoxChat;
+			sourceTree = "<group>";
+		};
+		4C7DBF6C593D491F0A214CE3 /* TonamoxTerminal */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TonamoxTerminal;
+			sourceTree = "<group>";
+		};
+		4D28BC6663ABEE798205AC67 /* Agents */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Agents;
+			sourceTree = "<group>";
+		};
+		65054EA4E9297F5FA294DFA5 /* Models */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		A442891CDB0D020681C3128C /* TonamoxImage */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TonamoxImage;
+			sourceTree = "<group>";
+		};
+		B2D732D3D9DB42DE898CD9E2 /* Terminal */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Terminal;
+			sourceTree = "<group>";
+		};
+		B80F65ADE69BC5673964E2F7 /* Chat */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Chat;
+			sourceTree = "<group>";
+		};
+		BDFF29A15FA653954E2B9AF8 /* Hybrid */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Hybrid;
+			sourceTree = "<group>";
+		};
+		CC9D21DE44A5F4263BE4FCD5 /* CommonUI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = CommonUI;
+			sourceTree = "<group>";
+		};
+		D9524AF1F676B2127D322D4C /* ML */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ML;
+			sourceTree = "<group>";
+		};
+		F9651E69DA784E8EE76D1A0A /* TonamoxLibrary */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TonamoxLibrary;
+			sourceTree = "<group>";
+		};
 		FED51C612F5B7A7900D5040F /* TonamoxExample */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = TonamoxExample;
@@ -31,6 +115,44 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		16172754BCDC431928016BA0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5C881EFEFEBD5B7751676E4A /* TonamoxCore in Frameworks */,
+				226E6AD8CD124CF4A0F67364 /* TonamoxUI in Frameworks */,
+				36BD5F6E103F8F94C84B6FC6 /* TonamoxImageGen in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		304094D358913A03C4EF4B3C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				948E533D97EF58B7DAD414B1 /* TonamoxCore in Frameworks */,
+				1137226B0B3BC0047E3CDE75 /* TonamoxUI in Frameworks */,
+				D132F346509031056E067945 /* TonamoxVoice in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9BF2286ACB86D56F315CC634 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0E0B387FAC502D6F91366376 /* TonamoxCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B21E87FC3B69C27F93FEB22D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1B77D8A9094AF9A43CF7D5FF /* TonamoxCore in Frameworks */,
+				63759B878EE4B76C1A12F6E5 /* TonamoxUI in Frameworks */,
+				BE23D9A94FFFD45B2533492D /* TonamoxDocs in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FED51C5C2F5B7A7900D5040F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -61,6 +183,20 @@
 			isa = PBXGroup;
 			children = (
 				FED51C612F5B7A7900D5040F /* TonamoxExample */,
+				30E7CDB18647CEE002B5B8BF /* Common */,
+				CC9D21DE44A5F4263BE4FCD5 /* CommonUI */,
+				B80F65ADE69BC5673964E2F7 /* Chat */,
+				096A5B5C4F7400AA66BC1C3E /* Voice */,
+				0BFFAED541BCA84D59E722A2 /* Image */,
+				65054EA4E9297F5FA294DFA5 /* Models */,
+				BDFF29A15FA653954E2B9AF8 /* Hybrid */,
+				D9524AF1F676B2127D322D4C /* ML */,
+				4D28BC6663ABEE798205AC67 /* Agents */,
+				B2D732D3D9DB42DE898CD9E2 /* Terminal */,
+				3CD51142BFBCB662FC02737F /* TonamoxChat */,
+				A442891CDB0D020681C3128C /* TonamoxImage */,
+				F9651E69DA784E8EE76D1A0A /* TonamoxLibrary */,
+				4C7DBF6C593D491F0A214CE3 /* TonamoxTerminal */,
 				FE825F132F5CC27D006C054A /* Frameworks */,
 				FED51C602F5B7A7900D5040F /* Products */,
 			);
@@ -70,6 +206,10 @@
 			isa = PBXGroup;
 			children = (
 				FED51C5F2F5B7A7900D5040F /* TonamoxExample.app */,
+				C7E1B482678D599E3616C2C5 /* TonamoxChat.app */,
+				3622E408132E13CFC7710CCD /* TonamoxImage.app */,
+				5B714A745E89DB910728A551 /* TonamoxLibrary.app */,
+				ECDD4A720A2E57E7760866FD /* TonamoxTerminal.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,6 +217,115 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		17EE60FE76424A38E4442DD1 /* TonamoxChat */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 05E7F35B5C1EDEFD4C98F7FB /* Build configuration list for PBXNativeTarget "TonamoxChat" */;
+			buildPhases = (
+				C8651EE5BE75F6D0FF1C9412 /* Sources */,
+				304094D358913A03C4EF4B3C /* Frameworks */,
+				0AE0263632470464BFBEB5C0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				3CD51142BFBCB662FC02737F /* TonamoxChat */,
+				30E7CDB18647CEE002B5B8BF /* Common */,
+				CC9D21DE44A5F4263BE4FCD5 /* CommonUI */,
+				B80F65ADE69BC5673964E2F7 /* Chat */,
+				096A5B5C4F7400AA66BC1C3E /* Voice */,
+			);
+			name = TonamoxChat;
+			packageProductDependencies = (
+				25444DD40F7E110EAAB9E141 /* TonamoxCore */,
+				3C09977CD9F653D4E7DD2BBA /* TonamoxUI */,
+				3DD5CDEA4499960BEA5A9FC0 /* TonamoxVoice */,
+			);
+			productName = TonamoxChat;
+			productReference = C7E1B482678D599E3616C2C5 /* TonamoxChat.app */;
+			productType = "com.apple.product-type.application";
+		};
+		8DFC483EA9D96EC390117351 /* TonamoxTerminal */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1CBEEBD4F06AB20EE16ADB86 /* Build configuration list for PBXNativeTarget "TonamoxTerminal" */;
+			buildPhases = (
+				1B5A8EBCA58D6E5A00A5D49D /* Sources */,
+				9BF2286ACB86D56F315CC634 /* Frameworks */,
+				0583B54C15DA905BE9E7E47A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4C7DBF6C593D491F0A214CE3 /* TonamoxTerminal */,
+				30E7CDB18647CEE002B5B8BF /* Common */,
+				B2D732D3D9DB42DE898CD9E2 /* Terminal */,
+			);
+			name = TonamoxTerminal;
+			packageProductDependencies = (
+				CD1D49B3621733E2DEE084CA /* TonamoxCore */,
+			);
+			productName = TonamoxTerminal;
+			productReference = ECDD4A720A2E57E7760866FD /* TonamoxTerminal.app */;
+			productType = "com.apple.product-type.application";
+		};
+		B4A347AA57434FF6E01F3C6D /* TonamoxLibrary */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 31F24EE548A50B6D27A1FD5B /* Build configuration list for PBXNativeTarget "TonamoxLibrary" */;
+			buildPhases = (
+				7A6C342CFFA3F2394AC820AE /* Sources */,
+				B21E87FC3B69C27F93FEB22D /* Frameworks */,
+				7CE1395F6381941F94AA0133 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F9651E69DA784E8EE76D1A0A /* TonamoxLibrary */,
+				30E7CDB18647CEE002B5B8BF /* Common */,
+				CC9D21DE44A5F4263BE4FCD5 /* CommonUI */,
+			);
+			name = TonamoxLibrary;
+			packageProductDependencies = (
+				D080199B2F1C6DC6A45847A4 /* TonamoxCore */,
+				02485AF0D3320187AD254512 /* TonamoxUI */,
+				6C0BCA944731BBAF66F7481C /* TonamoxDocs */,
+			);
+			productName = TonamoxLibrary;
+			productReference = 5B714A745E89DB910728A551 /* TonamoxLibrary.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F331C93FAE813C3C4333A3F9 /* TonamoxImage */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A4C9CADD7245E61048EF6EF2 /* Build configuration list for PBXNativeTarget "TonamoxImage" */;
+			buildPhases = (
+				844828B70F6A6B6C6FD9C5D3 /* Sources */,
+				16172754BCDC431928016BA0 /* Frameworks */,
+				DFE0F13F223DB4B4450CAE4D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A442891CDB0D020681C3128C /* TonamoxImage */,
+				30E7CDB18647CEE002B5B8BF /* Common */,
+				CC9D21DE44A5F4263BE4FCD5 /* CommonUI */,
+				0BFFAED541BCA84D59E722A2 /* Image */,
+			);
+			name = TonamoxImage;
+			packageProductDependencies = (
+				C6D2D7985AE067FF6DDD0663 /* TonamoxCore */,
+				1DB67541749CC4C282A1734C /* TonamoxUI */,
+				55837B9A170F16BE501433A8 /* TonamoxImageGen */,
+			);
+			productName = TonamoxImage;
+			productReference = 3622E408132E13CFC7710CCD /* TonamoxImage.app */;
+			productType = "com.apple.product-type.application";
+		};
 		FED51C5E2F5B7A7900D5040F /* TonamoxExample */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FED51C802F5B7A7B00D5040F /* Build configuration list for PBXNativeTarget "TonamoxExample" */;
@@ -91,6 +340,15 @@
 			);
 			fileSystemSynchronizedGroups = (
 				FED51C612F5B7A7900D5040F /* TonamoxExample */,
+				30E7CDB18647CEE002B5B8BF /* Common */,
+				CC9D21DE44A5F4263BE4FCD5 /* CommonUI */,
+				B80F65ADE69BC5673964E2F7 /* Chat */,
+				096A5B5C4F7400AA66BC1C3E /* Voice */,
+				0BFFAED541BCA84D59E722A2 /* Image */,
+				65054EA4E9297F5FA294DFA5 /* Models */,
+				BDFF29A15FA653954E2B9AF8 /* Hybrid */,
+				D9524AF1F676B2127D322D4C /* ML */,
+				4D28BC6663ABEE798205AC67 /* Agents */,
 			);
 			name = TonamoxExample;
 			packageProductDependencies = (
@@ -118,6 +376,18 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					17EE60FE76424A38E4442DD1 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					8DFC483EA9D96EC390117351 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					B4A347AA57434FF6E01F3C6D = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					F331C93FAE813C3C4333A3F9 = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					FED51C5E2F5B7A7900D5040F = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -141,11 +411,43 @@
 			projectRoot = "";
 			targets = (
 				FED51C5E2F5B7A7900D5040F /* TonamoxExample */,
+				17EE60FE76424A38E4442DD1 /* TonamoxChat */,
+				F331C93FAE813C3C4333A3F9 /* TonamoxImage */,
+				B4A347AA57434FF6E01F3C6D /* TonamoxLibrary */,
+				8DFC483EA9D96EC390117351 /* TonamoxTerminal */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0583B54C15DA905BE9E7E47A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0AE0263632470464BFBEB5C0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7CE1395F6381941F94AA0133 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DFE0F13F223DB4B4450CAE4D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FED51C5D2F5B7A7900D5040F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -156,6 +458,34 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		1B5A8EBCA58D6E5A00A5D49D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7A6C342CFFA3F2394AC820AE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		844828B70F6A6B6C6FD9C5D3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C8651EE5BE75F6D0FF1C9412 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		FED51C5B2F5B7A7900D5040F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -166,16 +496,423 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		1FF2CB4799F94C4E7CE21F48 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = TonamoxImage/TonamoxImage.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = TonamoxImage/TonamoxImage.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Image";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save images you generate to your photo library.";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxImage;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		4A1D20408367B1AED7CDA23B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = TonamoxLibrary/TonamoxLibrary.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = TonamoxLibrary/TonamoxLibrary.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Library";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxLibrary;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		8202743A06C7C6276BC3C30F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = TonamoxLibrary/TonamoxLibrary.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = TonamoxLibrary/TonamoxLibrary.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Library";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxLibrary;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		92D5C36B9B67DD705C998640 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = TonamoxChat/TonamoxChat.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = TonamoxChat/TonamoxChat.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Chat";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan tickets and other images";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connects to a model server on your local network, such as Ollama or llama-server on your Mac.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to capture your voice for the AI assistant.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Used for voice input to the local AI assistant.";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxChat;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		974E8D02D79BF8DC27FBAE72 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = TonamoxImage/TonamoxImage.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = TonamoxImage/TonamoxImage.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Image";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save images you generate to your photo library.";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxImage;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		BB1F1625B494377797E17641 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TonamoxTerminal/TonamoxTerminal.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Terminal";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxTerminal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		C5195BAB5406039096677126 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TonamoxTerminal/TonamoxTerminal.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Terminal";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxTerminal;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Debug;
+		};
+		CED42542B7D4F3622C0170C9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = TonamoxChat/TonamoxChat.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = TonamoxChat/TonamoxChat.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Tonamox Chat";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Scan tickets and other images";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connects to a model server on your local network, such as Ollama or llama-server on your Mac.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to capture your voice for the AI assistant.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Used for voice input to the local AI assistant.";
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
+				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
+				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
+				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.TonamoxChat;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
 		FED51C7E2F5B7A7B00D5040F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CLANG_ENABLE_EXPLICIT_MODULES = NO;
-				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_EXPLICIT_MODULES = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
@@ -225,6 +962,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -232,13 +970,12 @@
 		FED51C7F2F5B7A7B00D5040F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CLANG_ENABLE_EXPLICIT_MODULES = NO;
-				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_EXPLICIT_MODULES = NO;
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CLANG_ENABLE_OBJC_WEAK = YES;
@@ -281,16 +1018,18 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
 			};
 			name = Release;
 		};
 		FED51C812F5B7A7B00D5040F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TonamoxExample/TonamoxExample.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "TonamoxExample/TonamoxExample-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "TonamoxExample/TonamoxExample-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -301,8 +1040,8 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan tickets and other images";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connects to a model server on your local network, such as Ollama or llama-server on your Mac.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save images you generate to your photo library.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to capture your voice for the AI assistant.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save images you generate to your photo library.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Used for voice input to the local AI assistant.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -319,6 +1058,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
 				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.AuraExample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -340,10 +1080,11 @@
 		FED51C822F5B7A7B00D5040F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TonamoxExample/TonamoxExample.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]" = "TonamoxExample/TonamoxExample-iOS.entitlements";
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = "TonamoxExample/TonamoxExample-iOS.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -354,8 +1095,8 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan tickets and other images";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connects to a model server on your local network, such as Ollama or llama-server on your Mac.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save images you generate to your photo library.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Used to capture your voice for the AI assistant.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Save images you generate to your photo library.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Used for voice input to the local AI assistant.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -372,6 +1113,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
+				OTHER_SWIFT_FLAGS = "-cxx-interoperability-mode=default";
 				PRODUCT_BUNDLE_IDENTIFIER = io.iosdevc.AuraExample;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -393,6 +1135,42 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		05E7F35B5C1EDEFD4C98F7FB /* Build configuration list for PBXNativeTarget "TonamoxChat" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				92D5C36B9B67DD705C998640 /* Debug */,
+				CED42542B7D4F3622C0170C9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1CBEEBD4F06AB20EE16ADB86 /* Build configuration list for PBXNativeTarget "TonamoxTerminal" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C5195BAB5406039096677126 /* Debug */,
+				BB1F1625B494377797E17641 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		31F24EE548A50B6D27A1FD5B /* Build configuration list for PBXNativeTarget "TonamoxLibrary" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8202743A06C7C6276BC3C30F /* Debug */,
+				4A1D20408367B1AED7CDA23B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A4C9CADD7245E61048EF6EF2 /* Build configuration list for PBXNativeTarget "TonamoxImage" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1FF2CB4799F94C4E7CE21F48 /* Debug */,
+				974E8D02D79BF8DC27FBAE72 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		FED51C5A2F5B7A7900D5040F /* Build configuration list for PBXProject "TonamoxExample" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -421,6 +1199,50 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		02485AF0D3320187AD254512 /* TonamoxUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxUI;
+		};
+		1DB67541749CC4C282A1734C /* TonamoxUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxUI;
+		};
+		25444DD40F7E110EAAB9E141 /* TonamoxCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxCore;
+		};
+		3C09977CD9F653D4E7DD2BBA /* TonamoxUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxUI;
+		};
+		3DD5CDEA4499960BEA5A9FC0 /* TonamoxVoice */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxVoice;
+		};
+		55837B9A170F16BE501433A8 /* TonamoxImageGen */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxImageGen;
+		};
+		6C0BCA944731BBAF66F7481C /* TonamoxDocs */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxDocs;
+		};
+		A0A0A0A0A0A0A0A0A0A0A002 /* TonamoxImageGen */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxImageGen;
+		};
+		C6D2D7985AE067FF6DDD0663 /* TonamoxCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxCore;
+		};
+		CD1D49B3621733E2DEE084CA /* TonamoxCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxCore;
+		};
+		D080199B2F1C6DC6A45847A4 /* TonamoxCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxCore;
+		};
 		FE034FEF2F7CA47E0047B53B /* TonamoxAppleIntelligence */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxAppleIntelligence;
@@ -433,10 +1255,6 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxDocs;
 		};
-		A0A0A0A0A0A0A0A0A0A0A002 /* TonamoxImageGen */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = TonamoxImageGen;
-		};
 		FE034FF52F7CA47E0047B53B /* TonamoxUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxUI;
@@ -445,6 +1263,10 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxVoice;
 		};
+		FEA6E0A100000000000000A1 /* TonamoxAgents */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxAgents;
+		};
 		FED51C932F5B7B0600D5040F /* TonamoxCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxCore;
@@ -452,10 +1274,6 @@
 		FED51CA82F5B7BA500D5040F /* TonamoxCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxCore;
-		};
-		FEA6E0A100000000000000A1 /* TonamoxAgents */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = TonamoxAgents;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

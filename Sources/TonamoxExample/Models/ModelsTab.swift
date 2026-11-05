@@ -194,6 +194,7 @@ struct ModelsTab: View {
                 try await imageState.delete(model)
             case .embeddings(let folder):
                 try FileManager.default.removeItem(at: folder)
+                TonamoxSharedStorage.postChange(.models)
             }
             notice = "Deleted \(item.title), freed \(StoredModel.bytesText(item.sizeBytes))."
         } catch {

@@ -47,7 +47,25 @@ public final class ModelDownloadCenter {
     private var backgroundTask = UIBackgroundTaskIdentifier.invalid
     #endif
 
-    private init() {}
+    private init() {
+        // Registered once for the app's lifetime: the center is a singleton.
+        _ = NotificationCenter.default.addObserver(forName: TonamoxSharedStorage.didChangeNotification, object: nil,
+                                                   queue: .main) { [weak self] notification in
+            guard TonamoxSharedStorage.change(of: notification) == .models else { return }
+            MainActor.assumeIsolated { self?.reloadSharedState() }
+        }
+    }
+
+    /// Re-reads the download records after another app of the group, or this one, changed models: registers what
+    /// appeared, unregisters what other apps deleted, and bumps ``revision``. Runs on its own for every
+    /// ``TonamoxSharedStorage/didChangeNotification`` about models; call it also when the app becomes active,
+    /// since a suspended app misses those signals.
+    public func reloadSharedState() {
+        let records = DownloadRecords.standard
+        records.registerDownloaded()
+        records.unregisterVanished()
+        changes += 1
+    }
 
     func phase(of candidate: Model) -> DownloadPhase {
         phases[candidate.id] ?? .idle
@@ -124,7 +142,10 @@ public final class ModelDownloadCenter {
         guard activeModelID != candidate.id, !isWritingElsewhere(candidate) else {
             throw DownloadInProgressError(name: candidate.displayName)
         }
-        try FileManager.default.removeItem(at: partial)
+        // The download lock is keyed by the finished file, as another app of the group writing the partial holds it.
+        try ModelDownloads.whileNotDownloading(partial.deletingPathExtension()) {
+            try FileManager.default.removeItem(at: partial)
+        }
         changes += 1
     }
 

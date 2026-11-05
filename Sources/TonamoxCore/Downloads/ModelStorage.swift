@@ -16,13 +16,19 @@ import os
 /// ``migrateLegacyDownloads()``. A non-sandboxed macOS process does not move anything by itself, because its Caches
 /// (`~/Library/Caches`) is shared with every other process of the user, older Tonamox builds included. Resuming a
 /// GGUF download is the exception: its `.partial` in Caches moves into the root so the transfer continues from it.
+///
+/// With ``TonamoxSharedStorage/configure(appGroup:)`` on iOS (or in a sandboxed Mac app holding the group), the root
+/// is `<group container>/Library/Application Support/AuraLocal/Models`. The app's private root is then merged in
+/// with ``mergeTree(from:to:isAtomic:fileManager:)`` and stays a read fallback for whatever could not move.
 public enum ModelStorage {
 
-    /// `<Application Support>/AuraLocal/Models`. Inside the app's container on iOS and in a sandboxed Mac app. A
-    /// non-sandboxed macOS process — the `tonamox` CLI, an app without App Sandbox, `swift test` — gets
-    /// `~/Library/Application Support/AuraLocal/Models`, shared by all of them so one download serves each.
+    /// `<Application Support>/AuraLocal/Models`. Inside the app's container on iOS and in a sandboxed Mac app, or
+    /// inside the App Group container once one is configured. A non-sandboxed macOS process — the `tonamox` CLI, an
+    /// app without App Sandbox, `swift test` — gets `~/Library/Application Support/AuraLocal/Models`, shared by all
+    /// of them so one download serves each.
     ///
-    /// The first access creates the folder, excludes it from backup and, when sandboxed, migrates Caches.
+    /// The first access creates the folder, excludes it from backup and, when sandboxed, migrates Caches and the
+    /// app's private root.
     public static var rootDirectory: URL { prepared.root }
 
     /// Moves downloads an earlier version left in Caches into ``rootDirectory``: GGUF files and their `.partial`
@@ -43,21 +49,35 @@ public enum ModelStorage {
     static let log = Logger(subsystem: "dev.auralocal", category: "ModelStorage")
     static let relativeRootPath = "AuraLocal/Models"
 
+    static let relativeEmbeddingsPath = "AuraLocal/embeddings"
+
     /// Caches, where earlier versions downloaded.
     static var legacyRoot: URL { prepared.legacyRoot }
 
-    /// Roots read after ``rootDirectory`` when it has no finished copy of a model.
-    static var fallbackRoots: [URL] { [prepared.legacyRoot] }
+    /// Roots read after ``rootDirectory`` when it has no finished copy of a model: the app's private root when storage
+    /// is shared, then Caches.
+    static var fallbackRoots: [URL] { prepared.fallbackRoots }
+
+    /// Fallback roots only Tonamox writes, so a delete removes a model there completely: the app's private root.
+    static var ownedFallbackRoots: [URL] { prepared.ownedFallbackRoots }
 
     /// ``rootDirectory`` first, then ``fallbackRoots``.
-    static var readRoots: [URL] { [prepared.root, prepared.legacyRoot] }
+    static var readRoots: [URL] { prepared.readRoots }
+
+    /// Runs the first-access work now: called by ``TonamoxSharedStorage/configure(appGroup:)`` so the merge into
+    /// the group happens at launch, not on the first download.
+    static func prepareSharedRoot() {
+        _ = prepared
+    }
 
     private static let prepared: StorageLocations = {
         let fileManager = FileManager.default
+        let resolution = TonamoxSharedStorage.resolution(for: .models)
         let locations = StorageLocations(
-            root: fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appending(path: relativeRootPath, directoryHint: .isDirectory),
-            legacyRoot: fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0])
+            root: resolution.applicationSupport.appending(path: relativeRootPath, directoryHint: .isDirectory),
+            legacyRoot: fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0],
+            privateRoot: resolution.privateApplicationSupport?
+                .appending(path: relativeRootPath, directoryHint: .isDirectory))
         prepare(locations.root, fileManager: fileManager)
         if isSandboxed {
             let report = migrate(from: locations.legacyRoot, to: locations.root, fileManager: fileManager)
@@ -68,8 +88,41 @@ public enum ModelStorage {
                     """)
             }
         }
+        if let privateApplicationSupport = resolution.privateApplicationSupport {
+            mergePrivateData(from: privateApplicationSupport, into: resolution.applicationSupport,
+                             privateRoot: locations.privateRoot, root: locations.root, fileManager: fileManager)
+        }
         return locations
     }()
+
+    /// Moves the app's own models and embedding bundles into the group. What stays (conflicts, other volume) is
+    /// still read from the private root.
+    static func mergePrivateData(from privateApplicationSupport: URL, into applicationSupport: URL,
+                                 privateRoot: URL?, root: URL, fileManager: FileManager) {
+        if let privateRoot {
+            report(mergeTree(from: privateRoot, to: root, fileManager: fileManager), what: "models")
+        }
+        // Each bundle (multilingual-e5-small) is one unit: it moves whole or stays. Nothing reads a private copy
+        // left behind, so one with the group's files and sizes is removed.
+        let isBundle: (String) -> Bool = { !$0.contains("/") }
+        let embeddings = mergeTree(
+            from: privateApplicationSupport.appending(path: relativeEmbeddingsPath, directoryHint: .isDirectory),
+            to: applicationSupport.appending(path: relativeEmbeddingsPath, directoryHint: .isDirectory),
+            isAtomic: isBundle, sizesSuffice: isBundle, fileManager: fileManager)
+        report(embeddings, what: "embedding bundles")
+    }
+
+    private static func report(_ merge: ModelStorageMigration, what: String) {
+        guard !merge.isEmpty else { return }
+        log.notice("""
+            merged private \(what, privacy: .public) into the App Group: \(merge.moved.count) moved, \
+            \(merge.duplicatesRemoved.count) identical private copies removed, \(merge.conflicts.count) kept private, \
+            \(merge.failures.count) failed
+            """)
+        for conflict in merge.conflicts {
+            log.notice("kept private (the group has its own copy): \(conflict, privacy: .public)")
+        }
+    }
 
     static var isSandboxed: Bool {
         #if os(macOS)
@@ -210,10 +263,16 @@ public enum ModelStorage {
 
 // MARK: - StorageLocations
 
-/// The storage root and the Caches directory earlier versions downloaded into.
+/// The storage root, the Caches directory earlier versions downloaded into, and the app's private root when the
+/// storage root is in an App Group.
 struct StorageLocations: Sendable {
     let root: URL
     let legacyRoot: URL
+    let privateRoot: URL?
+
+    var fallbackRoots: [URL] { [privateRoot, legacyRoot].compactMap { $0 } }
+    var ownedFallbackRoots: [URL] { [privateRoot].compactMap { $0 } }
+    var readRoots: [URL] { [root] + fallbackRoots }
 }
 
 // MARK: - ModelStorageMigration
@@ -228,13 +287,16 @@ public struct ModelStorageMigration: Sendable, Equatable {
     public let conflicts: [String]
     /// Left in Caches because the rename failed (another volume, permissions). Still read from there.
     public let failures: [String]
+    /// Removed from the source because the destination already holds an identical finished copy.
+    public let duplicatesRemoved: [String]
 
-    public init(moved: [String], conflicts: [String], failures: [String]) {
+    public init(moved: [String], conflicts: [String], failures: [String], duplicatesRemoved: [String] = []) {
         self.moved = moved
         self.conflicts = conflicts
         self.failures = failures
+        self.duplicatesRemoved = duplicatesRemoved
     }
 
     /// Nothing was found in Caches.
-    public var isEmpty: Bool { moved.isEmpty && conflicts.isEmpty && failures.isEmpty }
+    public var isEmpty: Bool { moved.isEmpty && conflicts.isEmpty && failures.isEmpty && duplicatesRemoved.isEmpty }
 }

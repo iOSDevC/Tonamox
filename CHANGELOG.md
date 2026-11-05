@@ -24,7 +24,9 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
 - **Renamed to TONAMOX.** The repository is `github.com/iOSDevC/Tonamox`, the modules are `TonamoxCore`,
   `TonamoxUI`, `TonamoxVoice`, `TonamoxDocs`, `TonamoxAgents`, `TonamoxAppleIntelligence` and `TonamoxImageGen`, the main
   type is `Tonamox` (with `TonamoxProfile`, `TonamoxSession`, `TonamoxError`), and the CLI is `tonamox`. On-disk
-  folders keep the `AuraLocal` name, so existing downloads stay in place.
+  folders keep the `AuraLocal` name, so existing downloads stay in place. The exception is `DocumentLibrary`'s
+  default index, which moved from `AuraLocal/docs` to `Tonamox/docs`. An index in the old folder is read again only
+  by an app that configures App Group sharing (see Fixed).
 - `InferenceBackend` has a new requirement, `generate(prompt:systemPrompt:maxTokens:constraint:onToken:)`.
   A custom backend must implement it; one that cannot enforce the constraint throws
   `GenerationConstraintError.unsupportedBackend`.
@@ -102,6 +104,12 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   (`http://127.0.0.1:10100/inference/v1`), so `detectAll()`, `Tonamox.detectLocalProviders()` and
   `tonamox providers` return three statuses instead of two, and `bestLocalTarget()` and `tonamox ask` fall back to
   a running Magnitude after llama-server and Ollama.
+- **Behaviour change (deletes):** `ModelDownloads.delete`, `deleteRepo` and `deleteFolder`, and with them
+  `CoreMLDiffusionModel.delete()`, throw the new `ModelFilesInUseError` and delete nothing while a download holds
+  the model's lock file, in this process or in another one sharing the storage root. Before, they deleted the
+  files under the running download.
+- `DownloadRecords.standard` and `CoreMLDiffusionModelStore.standard` are computed `static var`s instead of
+  `static let`s, so they can resolve the App Group (source compatible).
 
 ### Added
 
@@ -189,6 +197,32 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   `gguf.architecture` (other than "not a chat model") or `gguf.qwen35-nextn` blocks it, throw this instead of
   `LLMError.failedToLoad`. The blocker comes from the header alone; other failures keep their error, and a file that
   loads is never checked.
+- App Group shared storage: `TonamoxSharedStorage.configure(appGroup:)`, called first in `App.init`, lets the apps
+  of one App Group share models, download and image-model records, conversations, the document index, the e5
+  bundle and, on iOS and visionOS, the keychain items of service `dev.auralocal.remote`. The call returns
+  `SharedStorageConfiguration` (`.applied`, `.unavailable`, `.ignored`), and the active scope is
+  `TonamoxSharedStorage.scope`. On iOS (and in a sandboxed Mac app with the entitlement), the scope is
+  `.appGroup` and the data lives in the group container. A Mac app without App Sandbox gets `.userWide`: files
+  stay user-wide, and records are kept in `AuraLocal/download-records.json` and `image-model-records.json` there.
+  When storage moves into the group, the app's private model files and e5 bundle are renamed into it. Records,
+  conversations, document indexes and keychain items are copied once, and the private copies stay. An older
+  build of the same app on the same device therefore no longer sees the moved models. Not configured, nothing
+  changes. See [Sharing storage between apps](docs/guide/models.md#sharing-storage-between-apps-app-group).
+- `TonamoxSharedStorage.didChangeNotification`, `change(of:)` and `postChange(_:)` with `SharedStorageChange`
+  (`.models`, `.conversations`, `.documents`): posted after downloads, deletes, record changes, conversation
+  writes and document-library changes, through Darwin notifications to every app of the group (in-process
+  without one). `ModelDownloadCenter.reloadSharedState()` re-registers records and unregisters models whose
+  record another app deleted; the center runs it on every `.models` signal. `DocsTab` reloads its documents on
+  `.documents` and when its scene becomes active again, since a suspended app misses the signals.
+- iOS App Group apps close their shared SQLite connections when they enter the background. While backgrounded,
+  each `ConversationStore` and document-index call opens, runs in its own background task and closes, and download
+  locks are released when the background time runs out, because iOS kills a suspended app holding a lock in a
+  shared container.
+- `ModelFilesInUseError` (`name`) and `ModelStorageMigration.duplicatesRemoved`.
+- TonamoxExample project: four more apps, each with a shared scheme: **TonamoxChat** (Chat and Voice),
+  **TonamoxImage** (Image), **TonamoxLibrary** (`DocsTab`) and the iOS-only **TonamoxTerminal** (a read-only
+  list of the shared models). They are built from the Example's feature folders. All five configure
+  `group.io.iosdevc.tonamox` and carry it in their iOS builds; the Mac builds carry no App Group.
 
 ### Changed
 
@@ -213,6 +247,19 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   the same tokens) and computes it in one batch, so at temperature 0 a reused turn can now and then pick a different
   token.
 - `tonamox ask` uses a local llama-server, Ollama or Magnitude by default, or OpenAI, Anthropic or a custom endpoint when named.
+- Without a configured App Group, behaviour is close to before but not identical: `ConversationStore` and the
+  document index wait up to 3 s (`busy_timeout`) for another connection's lock instead of failing at once with
+  `SQLITE_BUSY`; deletes refuse with `ModelFilesInUseError` while a download holds the lock (see Breaking);
+  download records are encoded with sorted keys; and record, conversation and document-library changes post
+  `TonamoxSharedStorage.didChangeNotification` in-process, so `ModelDownloadCenter` re-scans the registry and
+  `DocsTab` reloads its list (it re-reads the chunks only when the set of documents changed).
+- `KeychainStore.hasKey(for:)` reads the item's attributes only, never its secret.
+- `DownloadRecords` and `CoreMLDiffusionModelStore` writes that change the records post
+  `TonamoxSharedStorage.didChangeNotification` (in this process only when no group is configured), and an
+  unchanged `remember` no longer rewrites the store.
+- TonamoxExample's sources are split into feature folders (`Chat`, `Voice`, `Image`, `Models`, `Hybrid`, `ML`,
+  `Agents`, `Common`, `CommonUI`) shared by the five apps. Its iOS builds use `TonamoxExample-iOS.entitlements`
+  with the App Group. `HuggingFaceTokenSection` no longer says other apps can't read the token.
 
 ### Fixed
 
@@ -251,6 +298,9 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
 - A GGUF that llama.cpp b8851 cannot load reported only "Failed to load model from file". It now names the header's
   blocker (an architecture b8851 does not know, a `qwen35` MTP block that needs b9180) through
   `IncompatibleGGUFError` (see Added).
+- In an app that configures App Group sharing, the document index an earlier build kept in `AuraLocal/docs` (the
+  default before the rename to `Tonamox/docs`) is merged into the shared index once, when its embedding model
+  matches or the shared index is empty. Without sharing it is still not read.
 
 ### Removed
 

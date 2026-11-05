@@ -42,6 +42,39 @@ let results = try await store.search("VAT Mexico")
 try await store.deleteConversation(id: conv.id)
 ```
 
+### Where the history is stored
+
+`ConversationStore.shared`, like any `ConversationStore(directory: nil)`, keeps its database at
+`<Application Support>/AuraLocal/conversations.sqlite`. `ConversationStore(directory:)` takes another folder. Every
+call opens the database when needed, so `open()` is optional.
+
+With `TonamoxSharedStorage.configure(appGroup:)` (see
+[Sharing storage between apps]({{ '/guide/models' | relative_url }}#sharing-storage-between-apps-app-group)), the
+default store lives in the App Group's container on iOS (and in a sandboxed Mac app entitled to the group), and
+every app of the group sees one history:
+
+- **Existing history is copied, not moved.** Before the shared file is first opened in a process, the app's
+  private `conversations.sqlite` is snapshotted read-only, WAL included. If the group has no store yet, the
+  snapshot becomes it. Otherwise its conversations and turns are added with `INSERT OR IGNORE`, so rows the group
+  already has stay as they are, and the added turns become searchable. A
+  `conversations.sqlite.merged-into-group` marker next to the private file stops any later merge, so a
+  conversation deleted from the shared store does not come back. The private file is never changed, and an older
+  build of the app keeps reading it.
+- **Two apps at once.** Each connection waits up to 3 s (`busy_timeout`) for another app's write lock instead of
+  failing with `SQLITE_BUSY`. This applies to every store, shared or not.
+- **In the background** (iOS and iPadOS). When the app enters the background, the default store closes its idle
+  connection inside a background task, because iOS kills a suspended app that still holds an SQLite lock in a
+  shared container. Until the app returns to the foreground, every call on a `ConversationStore` opens the
+  database, runs inside its own background task and closes it again. A write made while backgrounded is not
+  refused, for example the partial reply that a generation stopped by backgrounding saves.
+- **Change signal.** Every write (`createConversation`, `updateTitle`, `deleteConversation`, `appendTurn`,
+  `deleteTurn`, `pruneAndSummarize`) posts `TonamoxSharedStorage.didChangeNotification` with
+  `.conversations`. With a group, it reaches the other running apps of the group too. Nothing in the SDK reloads
+  on it: observe it, and reload when the scene becomes active, to keep a conversation list current.
+
+On a Mac without App Sandbox the store stays at `~/Library/Application Support/AuraLocal/conversations.sqlite`,
+which the `tonamox` CLI and every other non-sandboxed process of the user already share.
+
 ---
 
 ## Multi-Turn Chat
