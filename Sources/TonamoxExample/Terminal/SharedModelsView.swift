@@ -7,39 +7,47 @@ struct SharedModelsView: View {
     @State private var ggufFiles: [DownloadedGGUF] = []
     @State private var mlxSnapshots: [DownloadedSnapshot] = []
     @State private var hasToken = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Storage") {
-                    LabeledContent("Scope", value: scopeText)
-                    LabeledContent("Models folder") {
+                Section("Almacenamiento") {
+                    LabeledContent("Ámbito", value: scopeText)
+                    LabeledContent("Carpeta de modelos") {
                         Text(ModelStorage.rootDirectory.path(percentEncoded: false))
                             .font(.caption.monospaced())
                             .textSelection(.enabled)
                     }
-                    LabeledContent("Hugging Face token", value: hasToken ? "Stored" : "Not stored")
+                    LabeledContent("Token de Hugging Face", value: hasToken ? "Guardado" : "No guardado")
                 }
 
-                Section("GGUF models") {
+                Section("Modelos GGUF") {
                     if ggufFiles.isEmpty {
-                        Text("None").foregroundStyle(.secondary)
+                        Text("Ninguno").foregroundStyle(.secondary)
                     }
                     ForEach(ggufFiles) { file in
                         LabeledContent(file.displayName, value: file.sizeText)
                     }
                 }
 
-                Section("MLX snapshots") {
+                Section("Instantáneas MLX") {
                     if mlxSnapshots.isEmpty {
-                        Text("None").foregroundStyle(.secondary)
+                        Text("Ninguno").foregroundStyle(.secondary)
                     }
                     ForEach(mlxSnapshots) { snapshot in
-                        LabeledContent(snapshot.repoID, value: snapshot.isComplete ? "Complete" : "Partial")
+                        LabeledContent(snapshot.repoID, value: snapshot.isComplete ? "Completa" : "Parcial")
                     }
                 }
             }
-            .navigationTitle("Shared Models")
+            .navigationTitle("Modelos compartidos")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Listo") { dismiss() }
+                        .accessibilityIdentifier("sharedModels.done")
+                }
+            }
             .refreshable { rescan() }
         }
         .onAppear(perform: rescan)
@@ -48,9 +56,9 @@ struct SharedModelsView: View {
 
     private var scopeText: String {
         switch TonamoxSharedStorage.scope {
-        case .standard: "This app only"
+        case .standard: "Solo esta app"
         case .appGroup(let identifier, _): "App Group \(identifier)"
-        case .userWide(let identifier): "User-wide (\(identifier))"
+        case .userWide(let identifier): "Todo el usuario (\(identifier))"
         }
     }
 

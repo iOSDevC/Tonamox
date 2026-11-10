@@ -11,7 +11,9 @@
 		1137226B0B3BC0047E3CDE75 /* TonamoxUI in Frameworks */ = {isa = PBXBuildFile; productRef = 3C09977CD9F653D4E7DD2BBA /* TonamoxUI */; };
 		1B77D8A9094AF9A43CF7D5FF /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = D080199B2F1C6DC6A45847A4 /* TonamoxCore */; };
 		226E6AD8CD124CF4A0F67364 /* TonamoxUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1DB67541749CC4C282A1734C /* TonamoxUI */; };
+		314A798A4BE8914C28887E4C /* TerminalBridgeKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4617A169166E5CD82906B608 /* TerminalBridgeKit */; };
 		36BD5F6E103F8F94C84B6FC6 /* TonamoxImageGen in Frameworks */ = {isa = PBXBuildFile; productRef = 55837B9A170F16BE501433A8 /* TonamoxImageGen */; };
+		3998BD71339F0F592A72EBF2 /* TonamoxAppleIntelligence in Frameworks */ = {isa = PBXBuildFile; productRef = F4CD3E2C275E69BC866D0392 /* TonamoxAppleIntelligence */; };
 		5C881EFEFEBD5B7751676E4A /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = C6D2D7985AE067FF6DDD0663 /* TonamoxCore */; };
 		63759B878EE4B76C1A12F6E5 /* TonamoxUI in Frameworks */ = {isa = PBXBuildFile; productRef = 02485AF0D3320187AD254512 /* TonamoxUI */; };
 		948E533D97EF58B7DAD414B1 /* TonamoxCore in Frameworks */ = {isa = PBXBuildFile; productRef = 25444DD40F7E110EAAB9E141 /* TonamoxCore */; };
@@ -140,6 +142,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				0E0B387FAC502D6F91366376 /* TonamoxCore in Frameworks */,
+				314A798A4BE8914C28887E4C /* TerminalBridgeKit in Frameworks */,
+				3998BD71339F0F592A72EBF2 /* TonamoxAppleIntelligence in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -266,6 +270,8 @@
 			name = TonamoxTerminal;
 			packageProductDependencies = (
 				CD1D49B3621733E2DEE084CA /* TonamoxCore */,
+				4617A169166E5CD82906B608 /* TerminalBridgeKit */,
+				F4CD3E2C275E69BC866D0392 /* TonamoxAppleIntelligence */,
 			);
 			productName = TonamoxTerminal;
 			productReference = ECDD4A720A2E57E7760866FD /* TonamoxTerminal.app */;
@@ -404,6 +410,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				FE034FEE2F7CA47E0047B53B /* XCLocalSwiftPackageReference "../../../AuraLocal" */,
+				063D61E7648767C1C78D807D /* XCLocalSwiftPackageReference "TerminalBridge" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = FED51C602F5B7A7900D5040F /* Products */;
@@ -761,6 +768,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_LANGUAGE = es;
 				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
@@ -810,6 +818,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_LANGUAGE = es;
 				DEVELOPMENT_TEAM = 8DJ3QNW9Y7;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
@@ -1192,6 +1201,10 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		063D61E7648767C1C78D807D /* XCLocalSwiftPackageReference "TerminalBridge" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = TerminalBridge;
+		};
 		FE034FEE2F7CA47E0047B53B /* XCLocalSwiftPackageReference "../../../AuraLocal" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../../AuraLocal;
@@ -1219,6 +1232,10 @@
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxVoice;
 		};
+		4617A169166E5CD82906B608 /* TerminalBridgeKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TerminalBridgeKit;
+		};
 		55837B9A170F16BE501433A8 /* TonamoxImageGen */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxImageGen;
@@ -1242,6 +1259,10 @@
 		D080199B2F1C6DC6A45847A4 /* TonamoxCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = TonamoxCore;
+		};
+		F4CD3E2C275E69BC866D0392 /* TonamoxAppleIntelligence */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TonamoxAppleIntelligence;
 		};
 		FE034FEF2F7CA47E0047B53B /* TonamoxAppleIntelligence */ = {
 			isa = XCSwiftPackageProductDependency;
