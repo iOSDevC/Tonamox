@@ -516,7 +516,7 @@ apps built from the Example's feature folders. Each app has its own shared schem
 | `TonamoxChat` | `io.iosdevc.TonamoxChat` | iOS, macOS | Chat and Voice (+ Settings on iOS) |
 | `TonamoxImage` | `io.iosdevc.TonamoxImage` | iOS, macOS | Image (+ Settings on iOS) |
 | `TonamoxLibrary` | `io.iosdevc.TonamoxLibrary` | iOS, macOS | Library, `DocsTab` (+ Settings on iOS) |
-| `TonamoxTerminal` | `io.iosdevc.TonamoxTerminal` | iOS only | read-only list of the shared models, storage scope and token state |
+| `TonamoxTerminal` | `io.iosdevc.TonamoxTerminal` | iOS only | terminal assistant: a model already on disk (or Apple Intelligence) proposes shell commands, and a paired Mac helper types them into a GNU `screen` session without pressing Enter |
 
 Each app calls `TonamoxSharedStorage.configure(appGroup: "group.io.iosdevc.tonamox")` first. Their iOS builds
 carry that App Group, so on one iPhone they share models, records, conversations, the document library and the
@@ -1336,6 +1336,8 @@ Sources/
 └── TonamoxExample/            (TonamoxExample.xcodeproj: the TonamoxExample, TonamoxChat, TonamoxImage,
                                 TonamoxLibrary and TonamoxTerminal apps; feature folders Chat, Voice, Image,
                                 Models, Hybrid, ML, Agents, Terminal, shared by them with Common and CommonUI)
+    └── TerminalBridge/        (its own Swift package, outside the root manifest: TerminalBridgeKit,
+                                TerminalBridgeHelper and the macOS `tonamox-bridge` executable)
 
 Examples/
 └── ModelFinder/

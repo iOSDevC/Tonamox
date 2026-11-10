@@ -576,10 +576,21 @@ finished). A gated repo shows **Add a token**, which opens the token form in pla
   - **TonamoxImage** (`io.iosdevc.TonamoxImage`, iOS and macOS): the Image tab, with its Core ML finder.
   - **TonamoxLibrary** (`io.iosdevc.TonamoxLibrary`, iOS and macOS): `DocsTab`, with its download placeholder
     and **Import embedding model…**.
-  - **TonamoxTerminal** (`io.iosdevc.TonamoxTerminal`, iOS only, links only TonamoxCore): a read-only
-    **Shared Models** list showing the storage scope, the models folder, whether a Hugging Face token is
-    stored, and the GGUF files and MLX snapshots on disk. It downloads and loads nothing. It has no Mac
-    destination, including "Designed for iPad".
+  - **TonamoxTerminal** (`io.iosdevc.TonamoxTerminal`, iOS only; links TonamoxCore, TonamoxAppleIntelligence
+    and `TerminalBridgeKit`): a single-turn chat that answers with shell commands, plus the **Shared Models**
+    list (storage scope, models folder, whether a Hugging Face token is stored, GGUF files and MLX snapshots
+    on disk). It loads a model that is already on disk, or Apple Intelligence where available, and downloads
+    nothing. Its interface is in Spanish. It has no Mac destination, including "Designed for iPad".
+    - Each command block has a send button. A paired Mac running `tonamox-bridge run` types the command into
+      window 0 of a dedicated GNU `screen` session and never presses Enter: you run it yourself on the Mac.
+    - The helper lives in `Sources/TonamoxExample/TerminalBridge`, a separate package with no dependencies
+      (`swift build`, `swift test` there; the root `swift test` does not run its tests). `tonamox-bridge help`
+      lists the subcommands (`pair`, `run`, `status`, `doctor`, `unpair`) and the known limits.
+    - Before each write the helper requires an idle prompt on the last line, the login shell in the
+      foreground and no other window in the session; otherwise it refuses. Typed text still acts as keystrokes
+      in vi command mode, a `read -q` prompt or a `screen` overlay, so use a session reserved for this.
+    - Verified on the iPhone 17 Pro simulator with `run --simulator` only. `run --device` (usbmux to a
+      physical iPhone) has not been tested on hardware.
   - On iOS, Chat, Image and Library have a **Settings** tab with the Hybrid settings (escalation policy, cloud
     keys, Hugging Face token). On a Mac, the same view is the app's Settings window.
   - Each app refreshes its model lists when another app of the group signals a change, and again every time it

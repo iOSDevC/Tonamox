@@ -220,9 +220,15 @@ same history, so it already contains the first hybrid, SystemTool and `aura` CLI
   shared container.
 - `ModelFilesInUseError` (`name`) and `ModelStorageMigration.duplicatesRemoved`.
 - TonamoxExample project: four more apps, each with a shared scheme: **TonamoxChat** (Chat and Voice),
-  **TonamoxImage** (Image), **TonamoxLibrary** (`DocsTab`) and the iOS-only **TonamoxTerminal** (a read-only
-  list of the shared models). They are built from the Example's feature folders. All five configure
+  **TonamoxImage** (Image), **TonamoxLibrary** (`DocsTab`) and the iOS-only **TonamoxTerminal** (terminal
+  assistant, next entry). They are built from the Example's feature folders. All five configure
   `group.io.iosdevc.tonamox` and carry it in their iOS builds; the Mac builds carry no App Group.
+- **TonamoxTerminal** and the `tonamox-bridge` Mac helper (`Sources/TonamoxExample/TerminalBridge`, a separate
+  package with its own tests). The app asks a model already on disk, or Apple Intelligence, for shell commands;
+  a paired helper types the one you send into a dedicated GNU `screen` session and never presses Enter. The
+  helper refuses unless the session shows an idle prompt in a single window. Spanish interface. Verified on the
+  simulator only; `run --device` (usbmux) is untested on hardware. See
+  [Models](docs/guide/models.md) for the limits.
 
 ### Changed
 
