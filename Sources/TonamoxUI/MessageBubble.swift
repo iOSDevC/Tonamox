@@ -22,7 +22,8 @@ public struct MessageBubble: View {
                 )
                 .font(.subheadline)
                 .textSelection(.enabled)
-                .accessibilityLabel("\(message.role == .user ? "You" : "Assistant"): \(message.text)")
+                .accessibilityLabel(message.role == .user ? Text("You: \(message.text)", bundle: .module)
+                                    : Text("Assistant: \(message.text)", bundle: .module))
             if message.role == .assistant { Spacer(minLength: 48) }
         }
     }
@@ -41,7 +42,8 @@ public struct StreamingBubble: View {
                 .font(.subheadline)
                 .opacity(text.isEmpty ? 0.4 : 1)
                 .textSelection(.enabled)
-                .accessibilityLabel(text.isEmpty ? "Generating response" : "Assistant is typing: \(text)")
+                .accessibilityLabel(text.isEmpty ? Text("Generating response", bundle: .module)
+                                    : Text("Assistant is typing: \(text)", bundle: .module))
             Spacer(minLength: 48)
         }
     }

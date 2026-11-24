@@ -28,7 +28,7 @@ struct StatusSection: View {
                     }
                     .frame(maxHeight: 320)
                 } label: {
-                    Label("Output", systemImage: "text.alignleft")
+                    Label(String(localized: "Output", bundle: .module), systemImage: "text.alignleft")
                         .font(.subheadline.weight(.semibold))
                 }
             }

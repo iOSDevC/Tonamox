@@ -4,7 +4,7 @@ import TonamoxCore
 /// Search judged against this device only, showing just what runs, in its own stack. Downloads keep going after
 /// the sheet closes because ``ModelDownloadCenter`` is shared.
 struct HFSearchSheet: View {
-    @State private var search = HFModelSearch(query: "qwen", devices: [DevicePreset.thisDevice()],
+    @State private var search = HFModelSearch(query: "", devices: [DevicePreset.thisDevice()],
                                               compatibleOnly: true)
     @State private var selection: String?
     @Environment(\.dismiss) private var dismiss
@@ -19,7 +19,7 @@ struct HFSearchSheet: View {
                 .navigationDestination(item: $selection) { HFRepoDetailView(repoID: $0, search: search) }
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
+                        Button(String(localized: "Done", bundle: .module)) { dismiss() }
                     }
                 }
         }

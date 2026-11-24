@@ -81,7 +81,7 @@ struct ModelRow: View {
 
                 if let onTest {
                     Button { onTest(model) } label: {
-                        Text("Test")
+                        Text("Test", bundle: .module)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.tint)
                             .padding(.horizontal, 10)
@@ -124,7 +124,7 @@ struct ModelRow: View {
         case .idle:
             if isDownloaded {
                 HStack(spacing: 8) {
-                    Label("Ready", systemImage: "checkmark.circle.fill")
+                    Label(String(localized: "Ready", bundle: .module), systemImage: "checkmark.circle.fill")
                         .font(.caption2)
                         .foregroundStyle(.green)
 
@@ -135,19 +135,19 @@ struct ModelRow: View {
                             .padding(5)
                             .background(.red.opacity(0.1), in: Circle())
                     }
-                    .accessibilityLabel("Delete \(model.displayName)")
+                    .accessibilityLabel(Text("Delete \(model.displayName)", bundle: .module))
                 }
             } else if compatibility?.fitLevel == .tooLarge {
-                Label("Too Large", systemImage: "xmark.circle")
+                Label(String(localized: "Too Large", bundle: .module), systemImage: "xmark.circle")
                     .font(.caption2)
                     .foregroundStyle(.red)
             } else if center.isWritingElsewhere(model) {
-                Label("Downloading elsewhere", systemImage: "arrow.down.circle.dotted")
+                Label(String(localized: "Downloading elsewhere", bundle: .module), systemImage: "arrow.down.circle.dotted")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
                 Button { startDownload() } label: {
-                    Text("Download")
+                    Text("Download", bundle: .module)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
@@ -167,12 +167,12 @@ struct ModelRow: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Cancel download")
+                .accessibilityLabel(Text("Cancel download", bundle: .module))
             }
 
         case .failed:
             Button { startDownload() } label: {
-                Text("Retry")
+                Text("Retry", bundle: .module)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
@@ -187,7 +187,7 @@ struct ModelRow: View {
     private func startDownload() {
         let key = DownloadRecords.key(for: model)
         guard center.claim(model) else {
-            errorMessage = "This file is downloading elsewhere in the app."
+            errorMessage = String(localized: "This file is downloading elsewhere in the app.", bundle: .module)
             return
         }
         downloadState = .downloading
@@ -263,8 +263,8 @@ private extension BackendKind {
         case .mlx:            "MLX"
         case .llamaCpp:       "GGUF"
         case .layerStreaming:  "STREAM"
-        case .remote:          "REMOTE"
-        case .hybrid:          "HYBRID"
+        case .remote:          String(localized: "REMOTE", bundle: .module)
+        case .hybrid:          String(localized: "HYBRID", bundle: .module)
         }
     }
 
@@ -292,12 +292,13 @@ struct SpeedBadge: View {
             Text(String(format: "~%.0f–%.0f tok/s", range.lowerBound, range.upperBound))
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(speedColor)
-                .help("Mixture of experts: uncalibrated decode range on this device — \(compatibility.speedLevel.label)")
+                .help(Text("Mixture of experts: uncalibrated decode range on this device — \(compatibility.speedLevel.localizedLabel)",
+                            bundle: .module))
         } else if let tps = compatibility.estimatedDecodeTokensPerSecond {
             Text(String(format: "~%.0f tok/s", tps))
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(speedColor)
-                .help("Estimated decode speed on this device — \(compatibility.speedLevel.label)")
+                .help(Text("Estimated decode speed on this device — \(compatibility.speedLevel.localizedLabel)", bundle: .module))
         }
     }
 
@@ -317,7 +318,7 @@ struct FitBadge: View {
     let fitLevel: ModelFitLevel
 
     var body: some View {
-        Label(fitLevel.label, systemImage: fitLevel.systemImage)
+        Label(fitLevel.localizedLabel, systemImage: fitLevel.systemImage)
             .font(.caption2.weight(.medium))
             .foregroundStyle(fitColor)
     }

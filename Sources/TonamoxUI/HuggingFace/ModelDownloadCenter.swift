@@ -16,7 +16,9 @@ enum DownloadPhase: Equatable {
 /// Thrown when a delete targets a file that is still being written.
 struct DownloadInProgressError: LocalizedError {
     let name: String
-    var errorDescription: String? { "\(name) is downloading. Cancel the download before deleting it." }
+    var errorDescription: String? {
+        String(localized: "\(name) is downloading. Cancel the download before deleting it.", bundle: .module)
+    }
 }
 
 /// Owns the single running download from the Hugging Face browser, records it, registers it when it finishes and
@@ -32,8 +34,10 @@ public final class ModelDownloadCenter {
     /// Bumped whenever models are downloaded, deleted or registered, here or through ``OnDemandDownloads``.
     public var revision: Int { changes + OnDemandDownloads.shared.revision }
     private var changes = 0
-    /// Keeps the screen on while a download runs (iOS).
-    public var keepsScreenAwake = false
+    /// Keeps the screen on while a download runs (iOS). Takes effect at once, also mid-download.
+    public var keepsScreenAwake = false {
+        didSet { ScreenAwakeCoordinator.shared.setHeld(keepsScreenAwake && isBusy, for: .download) }
+    }
     /// Whether a download runs.
     public var isBusy: Bool { job != nil }
 
@@ -201,8 +205,8 @@ public final class ModelDownloadCenter {
 
     /// Not a background download: it only buys ~30 s so a quick app switch does not fail the transfer.
     private func beginBackgroundWindow() {
+        ScreenAwakeCoordinator.shared.setHeld(keepsScreenAwake, for: .download)
         #if canImport(UIKit)
-        UIApplication.shared.isIdleTimerDisabled = keepsScreenAwake
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Model download") { [weak self] in
             MainActor.assumeIsolated {
                 self?.job?.cancel()
@@ -213,8 +217,8 @@ public final class ModelDownloadCenter {
     }
 
     private func endBackgroundWindow() {
+        ScreenAwakeCoordinator.shared.setHeld(false, for: .download)
         #if canImport(UIKit)
-        UIApplication.shared.isIdleTimerDisabled = false
         guard backgroundTask != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTask)
         backgroundTask = .invalid

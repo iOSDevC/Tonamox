@@ -32,7 +32,7 @@ public struct TextChatTab: View {
         let revision = ModelDownloadCenter.shared.revision
         NavigationStack {
             content
-                .navigationTitle(vm.activeConversation?.title ?? "Text Chat")
+                .navigationTitle(vm.activeConversation?.title ?? String(localized: "Text Chat", bundle: .module))
 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
 #endif
@@ -50,7 +50,7 @@ public struct TextChatTab: View {
                             // First: on iPhone the end of this long menu is several screens down.
                             if offersHuggingFaceSearch {
                                 Section {
-                                    Button("Find on Hugging Face…", systemImage: "magnifyingglass") {
+                                    Button(String(localized: "Find on Hugging Face…", bundle: .module), systemImage: "magnifyingglass") {
                                         showsSearch = true
                                     }
                                 }
@@ -59,13 +59,13 @@ public struct TextChatTab: View {
                             // user downloaded them.
                             let downloaded = Model.allModels.filter { $0.category == .text && $0.isDownloaded }
                             if !downloaded.isEmpty {
-                                Section("Downloaded") {
+                                Section(String(localized: "Downloaded", bundle: .module)) {
                                     ForEach(downloaded, id: \.self) { downloadedModel in
                                         modelButton(downloadedModel, blocker: RunBlocker.check(downloadedModel))
                                     }
                                 }
                             }
-                            Section("MLX Models") {
+                            Section(String(localized: "MLX Models", bundle: .module)) {
                                 ForEach(Model.textModels.filter { $0.format == .mlx && !$0.isDownloaded },
                                         id: \.self) { m in
                                     modelButton(m)
@@ -76,7 +76,7 @@ public struct TextChatTab: View {
                                 return !$0.isDownloaded
                             }
                             if !ggufText.isEmpty {
-                                Section("GGUF Models (llama.cpp)") {
+                                Section(String(localized: "GGUF Models (llama.cpp)", bundle: .module)) {
                                     ForEach(ggufText, id: \.self) { m in
                                         modelButton(m)
                                     }
@@ -121,9 +121,12 @@ public struct TextChatTab: View {
             ChatView(vm: vm, selectedModel: $selectedModel)
         } else {
             ModelDownloadPlaceholder(
-                "Download \(selectedModel.displayName)",
-                message: "Chat runs on this device. Pick another model from the menu, or download this one.",
-                models: [RequiredModel(selectedModel, purpose: "Chats and keeps your conversations on this device")]
+                String(localized: "Download \(selectedModel.displayName)", bundle: .module),
+                message: String(localized: "Chat runs on this device. Pick another model from the menu, or download this one.",
+                                bundle: .module),
+                models: [RequiredModel(selectedModel,
+                                       purpose: String(localized: "Chats and keeps your conversations on this device",
+                                                       bundle: .module))]
             )
         }
     }
@@ -136,7 +139,7 @@ public struct TextChatTab: View {
             Task { await vm.newConversation(model: m) }
         } label: {
             HStack {
-                Text(blocker.map { "\(m.displayName) (\($0.label))" } ?? m.displayName)
+                Text(verbatim: blocker.map { "\(m.displayName) (\($0.label))" } ?? m.displayName)
                 Spacer()
                 if m.isDownloaded {
                     Image(systemName: "checkmark.circle.fill")

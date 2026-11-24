@@ -50,7 +50,7 @@ struct RunButton: View {
         .hoverEffect()
 #endif
         .disabled(isLoading)
-        .accessibilityLabel("\(title) — \(subtitle)")
-        .accessibilityHint(isDownloaded ? "Tap to run" : "Tap to download and run")
+        .accessibilityLabel(Text(verbatim: "\(title) — \(subtitle)"))
+        .accessibilityHint(isDownloaded ? Text("Tap to run", bundle: .module) : Text("Tap to download and run", bundle: .module))
     }
 }

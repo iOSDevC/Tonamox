@@ -56,7 +56,7 @@ public struct ChatView: View {
 
     private var inputBar: some View {
         HStack(spacing: 10) {
-            TextField("Ask something...", text: $prompt, axis: .vertical)
+            TextField(String(localized: "Ask something...", bundle: .module), text: $prompt, axis: .vertical)
                 .lineLimit(1...4)
                 .padding(10)
                 .background(Color.tertiaryGroupedBackground, in: RoundedRectangle(cornerRadius: 12))
@@ -88,8 +88,8 @@ public struct ChatView: View {
         .hoverEffect()
 #endif
         .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !vm.isStreaming)
-        .accessibilityLabel(vm.isStreaming ? "Stop generating" : "Send message")
-        .accessibilityAction(named: "Send message") { sendCurrentPrompt() }
+        .accessibilityLabel(vm.isStreaming ? Text("Stop generating", bundle: .module) : Text("Send message", bundle: .module))
+        .accessibilityAction(named: Text("Send message", bundle: .module)) { sendCurrentPrompt() }
 #if os(macOS)
         .keyboardShortcut(.return, modifiers: .command)
 #endif

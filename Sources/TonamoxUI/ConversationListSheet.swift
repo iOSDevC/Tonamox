@@ -11,9 +11,9 @@ public struct ConversationListSheet: View {
             List {
                 if vm.conversations.isEmpty {
                     ContentUnavailableView(
-                        "No conversations",
+                        String(localized: "No conversations", bundle: .module),
                         systemImage: "bubble.left",
-                        description: Text("Use the compose button to start a new chat.")
+                        description: Text("Use the compose button to start a new chat.", bundle: .module)
                     )
                 } else {
                     ForEach(vm.conversations) { conv in
@@ -32,7 +32,7 @@ public struct ConversationListSheet: View {
                                     Text(conv.model.components(separatedBy: "/").last ?? conv.model)
                                         .font(.caption2).foregroundStyle(.secondary)
                                     Text("·").font(.caption2).foregroundStyle(.secondary)
-                                    Text("\(conv.turnCount) turns")
+                                    Text("\(conv.turnCount) turns", bundle: .module)
                                         .font(.caption2).foregroundStyle(.secondary)
                                 }
                             }
@@ -42,7 +42,7 @@ public struct ConversationListSheet: View {
                             Button(role: .destructive) {
                                 Task { await vm.deleteConversation(conv) }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
                             }
                         }
                         .listRowBackground(
@@ -52,13 +52,13 @@ public struct ConversationListSheet: View {
                     }
                 }
             }
-            .navigationTitle("Conversations")
+            .navigationTitle(Text("Conversations", bundle: .module))
 #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
 #endif
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("Done") { isPresented = false }
+                    Button(String(localized: "Done", bundle: .module)) { isPresented = false }
                 }
             }
         }

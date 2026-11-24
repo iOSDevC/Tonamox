@@ -18,32 +18,37 @@ final class ProgressThrottle: Sendable {
 
 /// User-facing text for a failed download.
 enum DownloadMessages {
-    static let gated = "This repo is gated. Accept its license on huggingface.co and add a read token."
+    static let gated = String(localized: "This repo is gated. Accept its license on huggingface.co and add a read token.",
+                              bundle: .module)
 
     @MainActor
     static func text(for error: any Error) -> String {
         if error is ModelIntegrityError {
-            return "The download did not match its published checksum and was deleted. Download it again."
+            return String(localized: "The download did not match its published checksum and was deleted. Download it again.",
+                          bundle: .module)
         }
         if let conflict = error as? DownloadConflictError {
-            return conflict.errorDescription ?? "Another download changed this file. Download it again."
+            return conflict.errorDescription
+                ?? String(localized: "Another download changed this file. Download it again.", bundle: .module)
         }
         guard let failure = error as? ModelDownloadError else {
-            return "\(error.localizedDescription) The partial file is kept; Resume continues from it."
+            return String(localized: "\(error.localizedDescription) The partial file is kept; Resume continues from it.",
+                          bundle: .module)
         }
         switch failure {
         case .unauthorized:
             return gated
         case .notFound:
-            return "File not found at main (renamed or removed)."
+            return String(localized: "File not found at main (renamed or removed).", bundle: .module)
         case .notFoundOrPrivate:
-            return "Repo not found, renamed or private. A private repo needs a read token with access to it."
+            return String(localized: "Repo not found, renamed or private. A private repo needs a read token with access to it.",
+                          bundle: .module)
         case .insufficientSpace(let needed, let available):
-            return "Needs \(ByteText.text(needed)), \(ByteText.text(available)) free."
+            return String(localized: "Needs \(ByteText.text(needed)), \(ByteText.text(available)) free.", bundle: .module)
         case .sizeMismatch:
-            return (failure.errorDescription ?? "") + " Delete the partial file and retry."
+            return String(localized: "\(failure.errorDescription ?? "") Delete the partial file and retry.", bundle: .module)
         case .http, .incompleteRepo, .unsupported:
-            return failure.errorDescription ?? "Download failed."
+            return failure.errorDescription ?? String(localized: "Download failed.", bundle: .module)
         }
     }
 

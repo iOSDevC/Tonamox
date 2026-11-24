@@ -39,7 +39,7 @@ public struct VisionTab: View {
                 .padding()
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Vision")
+            .navigationTitle(Text("Vision", bundle: .module))
             .background(Color.groupedBackground)
         }
         .onAppear {
@@ -103,21 +103,21 @@ public struct VisionTab: View {
             VStack(spacing: 12) {
                 modelPicker
 
-                Picker("Mode", selection: $runMode) {
+                Picker(String(localized: "Mode", bundle: .module), selection: $runMode) {
                     ForEach(Tonamox.VisionRunMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(mode.localizedLabel).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
 
-                TextField("Custom prompt...", text: $customPrompt, axis: .vertical)
+                TextField(String(localized: "Custom prompt...", bundle: .module), text: $customPrompt, axis: .vertical)
                     .lineLimit(2...4)
                     .font(.subheadline)
                     .padding(8)
                     .background(Color.tertiaryGroupedBackground, in: RoundedRectangle(cornerRadius: 8))
             }
         } label: {
-            Label("Settings", systemImage: "slider.horizontal.3")
+            Label(String(localized: "Settings", bundle: .module), systemImage: "slider.horizontal.3")
                 .font(.subheadline.weight(.semibold))
         }
     }
@@ -130,17 +130,17 @@ public struct VisionTab: View {
         }
         let available = Model.visionModels.filter { !$0.isDownloaded }
         return HStack {
-            Text("Model")
+            Text("Model", bundle: .module)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
-            Picker("Model", selection: $selectedModel) {
+            Picker(String(localized: "Model", bundle: .module), selection: $selectedModel) {
                 if !downloaded.isEmpty {
-                    Section("Downloaded") {
+                    Section(String(localized: "Downloaded", bundle: .module)) {
                         ForEach(downloaded, id: \.self) { Text($0.displayName).tag($0) }
                     }
                 }
-                Section("Available") {
+                Section(String(localized: "Available", bundle: .module)) {
                     ForEach(available, id: \.self) { Text($0.displayName).tag($0) }
                 }
             }
@@ -160,7 +160,7 @@ public struct VisionTab: View {
     @ViewBuilder private var runButtonSection: some View {
         if autoDownload || selectedModel.isDownloaded {
             RunButton(
-                title: "Analyze Image",
+                title: String(localized: "Analyze Image", bundle: .module),
                 subtitle: selectedModel.displayName,
                 isDownloaded: selectedModel.isDownloaded,
                 isLoading: vm.isLoading,
@@ -177,9 +177,12 @@ public struct VisionTab: View {
             .disabled(vm.selectedImage == nil)
         } else {
             ModelDownloadPlaceholder(
-                "Download \(selectedModel.displayName)",
-                message: "Images are analyzed on this device. Pick another model in Settings, or download this one.",
-                models: [RequiredModel(selectedModel, purpose: "Describes images and answers questions about them")]
+                String(localized: "Download \(selectedModel.displayName)", bundle: .module),
+                message: String(localized: "Images are analyzed on this device. Pick another model in Settings, or download this one.",
+                                bundle: .module),
+                models: [RequiredModel(selectedModel,
+                                       purpose: String(localized: "Describes images and answers questions about them",
+                                                       bundle: .module))]
             )
         }
     }

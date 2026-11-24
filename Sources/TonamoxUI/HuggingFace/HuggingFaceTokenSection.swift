@@ -12,17 +12,19 @@ public struct HuggingFaceTokenSection: View {
 
     public var body: some View {
         Section {
-            LabeledContent("Status", value: hasToken ? "Token saved" : "No token")
+            LabeledContent(String(localized: "Status", bundle: .module),
+                           value: hasToken ? String(localized: "Token saved", bundle: .module)
+                               : String(localized: "No token", bundle: .module))
             SecureField("hf_…", text: $draft)
                 .textContentType(.password)
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 #endif
-            Button("Save token", systemImage: "key") { save() }
+            Button(String(localized: "Save token", bundle: .module), systemImage: "key") { save() }
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             if hasToken {
-                Button("Remove token", systemImage: "trash", role: .destructive) { remove() }
+                Button(String(localized: "Remove token", bundle: .module), systemImage: "trash", role: .destructive) { remove() }
             }
             if let notice {
                 Text(notice)
@@ -30,19 +32,19 @@ public struct HuggingFaceTokenSection: View {
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Hugging Face token")
+            Text("Hugging Face token", bundle: .module)
         } footer: {
             Text("""
                 Needed only for gated or private repos: accept the license on the repo page first, then create a \
                 read token. GGUF and MLX downloads and the compatibility check send it to huggingface.co only. \
                 Stored in the Keychain on this device and never synced. Apps that share Tonamox storage through \
                 an App Group read the same token. Search stays anonymous, so private repos don't appear in results.
-                """)
+                """, bundle: .module)
         }
         .onAppear { hasToken = KeychainDownloadAuth.hasHuggingFaceToken }
         Section {
             if let tokens = URL(string: "https://huggingface.co/settings/tokens") {
-                Link("Create a read token on huggingface.co", destination: tokens)
+                Link(String(localized: "Create a read token on huggingface.co", bundle: .module), destination: tokens)
             }
         }
     }
@@ -51,9 +53,9 @@ public struct HuggingFaceTokenSection: View {
         do {
             try KeychainDownloadAuth.saveHuggingFaceToken(draft)
             draft = ""
-            notice = "Saved. Downloads and checks now send it to huggingface.co only."
+            notice = String(localized: "Saved. Downloads and checks now send it to huggingface.co only.", bundle: .module)
         } catch {
-            notice = "Could not save: \(error.localizedDescription)"
+            notice = String(localized: "Could not save: \(error.localizedDescription)", bundle: .module)
         }
         hasToken = KeychainDownloadAuth.hasHuggingFaceToken
     }
@@ -61,7 +63,7 @@ public struct HuggingFaceTokenSection: View {
     private func remove() {
         KeychainDownloadAuth.deleteHuggingFaceToken()
         hasToken = KeychainDownloadAuth.hasHuggingFaceToken
-        notice = "Removed."
+        notice = String(localized: "Removed.", bundle: .module)
     }
 }
 
@@ -73,13 +75,13 @@ struct HFTokenSheet: View {
         NavigationStack {
             Form { HuggingFaceTokenSection() }
                 .formStyle(.grouped)
-                .navigationTitle("Hugging Face token")
+                .navigationTitle(Text("Hugging Face token", bundle: .module))
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
+                        Button(String(localized: "Done", bundle: .module)) { dismiss() }
                     }
                 }
         }

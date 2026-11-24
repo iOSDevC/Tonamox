@@ -27,11 +27,11 @@ struct HFDownloadSection: View {
                 status(for: candidate)
                 controls(for: candidate)
             } else {
-                Text("No single-file quant fits this device.")
+                Text("No single-file version (quantization) fits this device.", bundle: .module)
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Download")
+            Text("Download", bundle: .module)
         } footer: {
             footer
         }
@@ -46,7 +46,7 @@ struct HFDownloadSection: View {
     /// Single-file, top-level quants that are not rated too large; shards and subfolders cannot load.
     private var quantChoices: [QuantFit] {
         result.quantFits.filter {
-            $0.isUsable && $0.memory.rating != .tooLarge && !$0.option.firstPath.contains("/")
+            $0.isUsable && $0.memory.rating != .tooLarge && $0.isTopLevel
         }
     }
 
@@ -70,9 +70,9 @@ struct HFDownloadSection: View {
 
     @ViewBuilder private var quantPicker: some View {
         if !quantChoices.isEmpty {
-            Picker("Quant", selection: $quantID) {
+            Picker(String(localized: "Version (quantization)", bundle: .module), selection: $quantID) {
                 ForEach(quantChoices) { choice in
-                    Text("\(choice.option.label ?? choice.option.firstPath) · "
+                    Text(verbatim: "\(choice.option.label ?? choice.option.firstPath) · "
                          + ByteText.text(choice.option.totalBytes))
                         .tag(Optional(choice.id))
                 }
@@ -87,11 +87,11 @@ struct HFDownloadSection: View {
             VStack(alignment: .leading, spacing: 6) {
                 if total > 0 {
                     ProgressView(value: Double(done), total: Double(total))
-                    Text("\(ByteText.text(done)) of \(ByteText.text(total))")
+                    Text("\(ByteText.text(done)) of \(ByteText.text(total))", bundle: .module)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 } else {
-                    ProgressView("Preparing…")
+                    ProgressView(String(localized: "Preparing…", bundle: .module))
                 }
             }
             .accessibilityElement(children: .combine)
@@ -106,7 +106,7 @@ struct HFDownloadSection: View {
                 Text(sizeLine(pendingPlan))
                     .font(.callout.monospacedDigit())
             } else {
-                ProgressView("Checking size…")
+                ProgressView(String(localized: "Checking size…", bundle: .module))
             }
         }
         if let deleteError {
@@ -116,7 +116,7 @@ struct HFDownloadSection: View {
     }
 
     @ViewBuilder private func downloaded(_ candidate: Model) -> some View {
-        Label("Downloaded.", systemImage: "checkmark.circle.fill")
+        Label(String(localized: "Downloaded.", bundle: .module), systemImage: "checkmark.circle.fill")
             .foregroundStyle(.green)
         if let file = candidate.resolvedFileURL {
             Text(file.path)
@@ -125,7 +125,7 @@ struct HFDownloadSection: View {
                 .textSelection(.enabled)
         }
         let blocker = RunBlocker.check(candidate, requiresSize: true)
-        Button("Try it", systemImage: "play.circle") { trial = candidate }
+        Button(String(localized: "Try it", bundle: .module), systemImage: "play.circle") { trial = candidate }
             .disabled(blocker != nil)
         if let blocker {
             Text(blocker.explanation)
@@ -137,26 +137,27 @@ struct HFDownloadSection: View {
     @ViewBuilder private func controls(for candidate: Model) -> some View {
         let phase = center.phase(of: candidate)
         if case .downloading = phase {
-            Button("Cancel", systemImage: "stop.circle", role: .cancel) { center.cancel() }
+            Button(String(localized: "Cancel", bundle: .module), systemImage: "stop.circle", role: .cancel) { center.cancel() }
         } else if !candidate.isDownloaded {
             let resumes = (pendingPlan?.bytesOnDisk ?? 0) > 0
             let elsewhere = center.isWritingElsewhere(candidate)
-            Button(resumes ? "Resume download" : "Download", systemImage: "arrow.down.circle") {
+            Button(resumes ? String(localized: "Resume download", bundle: .module) : String(localized: "Download", bundle: .module),
+                   systemImage: "arrow.down.circle") {
                 deleteError = nil
                 center.start(candidate, records: true)
             }
             .disabled(center.isBusy || elsewhere || pendingPlan == nil)
             if elsewhere {
-                Text("This file is downloading elsewhere in the app.")
+                Text("This file is downloading elsewhere in the app.", bundle: .module)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if center.isBusy {
-                Text("Another download is running.")
+                Text("Another download is running.", bundle: .module)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             if resumes {
-                Button("Delete partial download", systemImage: "trash", role: .destructive) {
+                Button(String(localized: "Delete partial download", bundle: .module), systemImage: "trash", role: .destructive) {
                     delete(candidate)
                 }
                 .disabled(center.isBusy || elsewhere)
@@ -169,9 +170,9 @@ struct HFDownloadSection: View {
             Label(message, systemImage: gated ? "lock.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(gated ? Color.orange : Color.red)
             if gated {
-                Button("Add a token", systemImage: "key") { showsToken = true }
+                Button(String(localized: "Add a token", bundle: .module), systemImage: "key") { showsToken = true }
                 if let url = result.huggingFaceURL {
-                    Link("Accept the license on huggingface.co", destination: url)
+                    Link(String(localized: "Accept the license on huggingface.co", bundle: .module), destination: url)
                 }
             }
         }
@@ -182,23 +183,23 @@ struct HFDownloadSection: View {
     @ViewBuilder private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
             if !isGGUF {
-                Text("Fetches config, tokenizer and safetensors from main only.")
+                Text("Fetches config, tokenizer and safetensors from main only.", bundle: .module)
             }
             #if targetEnvironment(simulator)
             if !isGGUF {
-                Text("MLX can't run on the Simulator; it needs a device.")
+                Text("MLX can't run on the Simulator; it needs a device.", bundle: .module)
             }
             #endif
-            Text("Downloads stop if the app stays in the background; Resume continues from the partial file.")
+            Text("Downloads stop if the app stays in the background; Resume continues from the partial file.", bundle: .module)
         }
     }
 
     private func sizeLine(_ plan: DownloadPlan) -> String {
-        let free = freeBytes.map { " · \(ByteText.text($0)) free" } ?? ""
-        if plan.bytesOnDisk > 0 {
-            return "Resume (\(ByteText.text(plan.bytesOnDisk)) of \(ByteText.text(plan.totalBytes)) on disk)\(free)"
-        }
-        return "Download \(ByteText.text(plan.totalBytes))\(free)"
+        let total = ByteText.text(plan.totalBytes)
+        let line = plan.bytesOnDisk > 0
+            ? String(localized: "Resume (\(ByteText.text(plan.bytesOnDisk)) of \(total) on disk)", bundle: .module)
+            : String(localized: "Download \(total)", bundle: .module)
+        return freeBytes.map { String(localized: "\(line) · \(ByteText.text($0)) free", bundle: .module) } ?? line
     }
 
     private func delete(_ candidate: Model) {

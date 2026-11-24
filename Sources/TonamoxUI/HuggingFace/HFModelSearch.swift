@@ -83,17 +83,32 @@ public final class HFModelSearch {
         devices.first { $0.id == deviceID } ?? devices[0]
     }
 
+    /// ``visibleMatches`` grouped by verdict, best first; rows still being checked come after the runnable ones.
+    var sections: [(status: CompatibilityVerdict?, matches: [HFModelHit])] {
+        let order: [CompatibilityVerdict?] = [.runnable, .runnableWithCaveats, nil, .unknown, .notRunnable]
+        let grouped = Dictionary(grouping: visibleMatches) { reports[$0.id]?.status }
+        return order.compactMap { status in grouped[status].map { (status, $0) } }
+    }
+
     /// Results the pipeline filter admits, minus the ones already known not to run when Compatible only is on.
     var visibleMatches: [HFModelHit] {
-        let admitted = pipelineFilter.map { filter in matches.filter(filter.admits) } ?? matches
-        guard compatibleOnly else { return admitted }
-        return admitted.filter { reports[$0.id].map { $0.status != .notRunnable } ?? true }
+        guard compatibleOnly else { return admittedMatches }
+        return admittedMatches.filter { reports[$0.id].map { $0.status != .notRunnable } ?? true }
+    }
+
+    /// Admitted results that Compatible only hides because they are rated Won't run; 0 while it is off.
+    var hiddenCount: Int {
+        compatibleOnly ? admittedMatches.count - visibleMatches.count : 0
+    }
+
+    private var admittedMatches: [HFModelHit] {
+        pipelineFilter.map { filter in matches.filter(filter.admits) } ?? matches
     }
 
     /// Starts a search and cancels the one in flight, so an older query can never overwrite a newer one.
     public func search() {
+        // An empty query lists the top models for the chosen order instead of searching.
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
         searchTask?.cancel()
         searchError = nil
         let sort = ordering

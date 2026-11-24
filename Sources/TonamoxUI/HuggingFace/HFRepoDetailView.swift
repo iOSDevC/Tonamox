@@ -6,13 +6,14 @@ import AppKit
 import UIKit
 #endif
 
-/// Everything the checker found about one repo on the search's device, blockers first, plus a Download section
-/// when the repo runs there. Fetches the repo the first time it appears. Brings no navigation container.
+/// One verdict card (can it run here, and which file), the Download section when it runs, the versions
+/// (quantizations) against the device's limit, then the checker's technical findings. Fetches the repo the first time it appears. Brings no navigation container.
 public struct HFRepoDetailView: View {
     let repoID: String
     let search: HFModelSearch
     @State private var showsToken = false
     @State private var trial: Model?
+    @Environment(\.hfRepoCaution) private var repoCaution
 
     public init(repoID: String, search: HFModelSearch) {
         self.repoID = repoID
@@ -22,19 +23,21 @@ public struct HFRepoDetailView: View {
     public var body: some View {
         Group {
             if let report = search.reports[repoID] {
-                HFReportForm(result: report, showsToken: $showsToken, trial: $trial)
+                let tags = search.matches.first { $0.id == repoID }?.tags ?? []
+                HFReportForm(result: report, caution: repoCaution(repoID, tags), showsToken: $showsToken,
+                             trial: $trial)
             } else {
-                ProgressView("Checking \(repoID)…")
+                ProgressView(String(localized: "Checking \(repoID)…", bundle: .module))
             }
         }
         .task(id: repoID) { await search.loadReport(for: repoID) }
-        .navigationTitle(repoID)
+        .navigationTitle(repoID.split(separator: "/").last.map(String.init) ?? repoID)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Hugging Face token", systemImage: "key") { showsToken = true }
+                Button(String(localized: "Hugging Face token", bundle: .module), systemImage: "key") { showsToken = true }
             }
         }
         // Sheets live here, not in the Form's rows, which a List may recycle while scrolling.
@@ -43,45 +46,94 @@ public struct HFRepoDetailView: View {
     }
 }
 
-/// The checker's report as a form.
+/// The checker's report as a form: the answer first, the evidence below.
 struct HFReportForm: View {
     let result: CompatibilityReport
+    var caution: String?
     @Binding var showsToken: Bool
     @Binding var trial: Model?
     @State private var copied = false
+    @State private var showsFindings = false
 
     var body: some View {
         Form {
-            summary
-            if let suggestion = result.suggestedEntry,
-               result.status == .runnable || result.status == .runnableWithCaveats {
+            // The inline navigation title truncates long repository ids.
+            Section {
+                Text(result.repoID)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                    .accessibilityAddTraits(.isHeader)
+                if let caution {
+                    HFRepoCautionLabel(text: caution)
+                }
+            }
+            HFVerdictCard(result: result)
+            if let suggestion = result.suggestedEntry, result.status.isRunnable, !result.artifact.kind.isAdapter {
                 HFDownloadSection(result: result, suggestion: suggestion, showsToken: $showsToken, trial: $trial)
                     .id(result.repoID)
             }
-            Section("Findings") {
-                ForEach(result.findings) { FindingRow(item: $0) }
-            }
+            versionsSection
+            otherFilesSection
+            findingsSection
+            deviceSection
             modelSection
             memorySection
-            if !result.quantFits.isEmpty {
-                Section("Quants on \(result.target.displayName)") {
-                    ForEach(result.quantFits) { QuantRow(line: $0) }
-                }
-            }
             licenseSection
             actions
         }
         .formStyle(.grouped)
     }
 
-    private var summary: some View {
+    @ViewBuilder private var versionsSection: some View {
+        if !result.quantFits.isEmpty {
+            let recommended = result.recommendedQuant?.id
+            // A blocker other than memory (architecture, adapter) rules out every row, whatever its size.
+            let blocker = result.blockers.first { $0.rule != "fit" }?.title
+            Section {
+                ForEach(result.quantFits.sorted { $0.option.totalBytes < $1.option.totalBytes }) { line in
+                    QuantRow(line: line, isRecommended: line.id == recommended, blockedReason: blocker)
+                }
+            } header: {
+                Text("Versions (quantizations) on \(result.target.displayName)", bundle: .module)
+            } footer: {
+                Text("Smaller versions need less memory and lose some quality. Dimmed versions cannot load here.", bundle: .module)
+            }
+        }
+    }
+
+    @ViewBuilder private var otherFilesSection: some View {
+        if !result.artifact.excludedFiles.isEmpty {
+            Section(String(localized: "Other files, not versions of the model", bundle: .module)) {
+                ForEach(result.artifact.excludedFiles) { file in
+                    LabeledContent {
+                        Text(file.sizeBytes.map(CompatibilityReport.gigabytesText) ?? "")
+                            .monospacedDigit()
+                    } label: {
+                        Text(file.path).font(.caption.monospaced())
+                        Text(file.kind.localizedLabel)
+                    }
+                }
+            }
+        }
+    }
+
+    private var findingsSection: some View {
         Section {
-            VerdictBadge(status: result.status)
-                .font(.title3)
-            Text(result.headline)
-                .font(.headline)
-            LabeledContent("Device", value: result.target.displayName)
-            LabeledContent("Memory budget", value: result.target.budgetText)
+            DisclosureGroup(isExpanded: $showsFindings) {
+                ForEach(result.findings) { FindingRow(item: $0) }
+            } label: {
+                Text("Technical details (\(result.findings.count) findings)", bundle: .module)
+            }
+        } footer: {
+            Text("Architecture, header read, licence and the evidence behind the answer above.", bundle: .module)
+        }
+    }
+
+    private var deviceSection: some View {
+        Section(String(localized: "Device", bundle: .module)) {
+            LabeledContent(String(localized: "Device", bundle: .module), value: result.target.displayName)
+            LabeledContent(String(localized: "Memory limit", bundle: .module), value: result.target.localizedBudgetText)
             Text(result.target.source)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -89,60 +141,63 @@ struct HFReportForm: View {
     }
 
     private var modelSection: some View {
-        Section("Model") {
-            LabeledContent("Format", value: result.weightFormat.label)
+        Section(String(localized: "Model", bundle: .module)) {
+            LabeledContent(String(localized: "Format", bundle: .module), value: result.weightFormat.localizedLabel)
             if let category = result.modelCategory {
-                LabeledContent("Loads as", value: category == .vision ? "Vision (image + text)" : "Text")
+                LabeledContent(String(localized: "Loads as", bundle: .module),
+                               value: category == .vision ? String(localized: "Vision (image + text)", bundle: .module) : String(localized: "Text", bundle: .module))
             }
-            if let family = result.overview.family { LabeledContent("Architecture", value: family) }
-            if let layers = result.overview.layers { LabeledContent("Layers", value: "\(layers)") }
-            if let context = result.overview.trainedContext { LabeledContent("Trained context", value: "\(context) tokens") }
-            if let heads = result.overview.kvHeads { LabeledContent("KV heads", value: "\(heads)") }
-            if let dim = result.overview.headDim { LabeledContent("Head dim", value: "\(dim)") }
-            LabeledContent("Vision weights", value: result.overview.hasVision ? "Yes" : "No")
-            if let quantization = result.overview.quantization { LabeledContent("Quantization", value: quantization) }
+            if let family = result.overview.family { LabeledContent(String(localized: "Architecture", bundle: .module), value: family) }
+            if let layers = result.overview.layers { LabeledContent(String(localized: "Layers", bundle: .module), value: "\(layers)") }
+            if let context = result.overview.trainedContext { LabeledContent(String(localized: "Trained context", bundle: .module),
+                               value: String(localized: "\(context) tokens", bundle: .module)) }
+            if let heads = result.overview.kvHeads { LabeledContent(String(localized: "KV heads", bundle: .module), value: "\(heads)") }
+            if let dim = result.overview.headDim { LabeledContent(String(localized: "Head dim", bundle: .module), value: "\(dim)") }
+            LabeledContent(String(localized: "Vision weights", bundle: .module), value: result.overview.hasVision ? String(localized: "Yes", bundle: .module) : String(localized: "No", bundle: .module))
+            if let quantization = result.overview.quantization { LabeledContent(String(localized: "Quantization", bundle: .module), value: quantization) }
         }
     }
 
     @ViewBuilder private var memorySection: some View {
         if let fit = result.weightsFit {
-            Section("Memory on \(result.target.displayName)") {
-                if let bytes = result.weightsBytes { LabeledContent("Weights", value: CompatibilityReport.gigabytesText(bytes)) }
-                LabeledContent("Fit", value: fit.summary)
-                if let speed = fit.decodeText {
-                    LabeledContent("Decode estimate", value: speed)
+            Section(String(localized: "Memory on \(result.target.displayName)", bundle: .module)) {
+                if let bytes = result.weightsBytes { LabeledContent(String(localized: "Weights", bundle: .module), value: CompatibilityReport.gigabytesText(bytes)) }
+                LabeledContent(String(localized: "Fit", bundle: .module), value: fit.localizedSummary)
+                if let speed = fit.localizedDecodeText {
+                    LabeledContent(String(localized: "Decode estimate", bundle: .module), value: speed)
                 }
             }
         }
     }
 
     private var licenseSection: some View {
-        Section("License") {
-            LabeledContent("License", value: result.licenseID ?? "Not declared")
-            if let name = result.licenseName { LabeledContent("Name", value: name) }
-            LabeledContent("Gated", value: result.gatedMode.map { "Yes (\($0))" } ?? "No")
+        Section(String(localized: "License", bundle: .module)) {
+            LabeledContent(String(localized: "License", bundle: .module), value: result.licenseID ?? String(localized: "Not declared", bundle: .module))
+            if let name = result.licenseName { LabeledContent(String(localized: "Name", bundle: .module), value: name) }
+            LabeledContent(String(localized: "Gated", bundle: .module),
+                           value: result.gatedMode.map { String(localized: "Yes (\($0))", bundle: .module) } ?? String(localized: "No", bundle: .module))
         }
     }
 
     private var actions: some View {
         Section {
             if let entry = result.suggestedEntry {
-                Button(copied ? "Copied" : "Copy catalog entry", systemImage: "doc.on.doc") {
+                Button(copied ? String(localized: "Copied", bundle: .module) : String(localized: "Copy catalog entry", bundle: .module), systemImage: "doc.on.doc") {
                     Self.copy(entry.jsonText())
                     copied = true
                 }
-                DisclosureGroup("models.json entry") {
+                DisclosureGroup(String(localized: "models.json entry", bundle: .module)) {
                     Text(entry.jsonText())
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
                 }
             } else {
-                Label("No catalog entry: the model can't run here.", systemImage: "doc.badge.ellipsis")
+                Label(String(localized: "No catalog entry: the model can't run here.", bundle: .module), systemImage: "doc.badge.ellipsis")
                     .foregroundStyle(.secondary)
             }
             if let url = result.huggingFaceURL {
                 Link(destination: url) {
-                    Label("Open on Hugging Face", systemImage: "safari")
+                    Label(String(localized: "Open on Hugging Face", bundle: .module), systemImage: "safari")
                 }
             }
         }
@@ -172,7 +227,7 @@ struct FindingRow: View {
                 .textSelection(.enabled)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.level.label): \(item.title). \(item.detail)")
+        .accessibilityLabel(Text(verbatim: "\(item.level.localizedLabel): \(item.title). \(item.detail)"))
     }
 
     private var tint: Color {
@@ -181,27 +236,5 @@ struct FindingRow: View {
         case .caveat: .orange
         case .info: .primary
         }
-    }
-}
-
-struct QuantRow: View {
-    let line: QuantFit
-
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                Text(line.option.label ?? line.option.firstPath)
-                    .font(.body.monospaced())
-                Text(CompatibilityReport.gigabytesText(line.option.totalBytes)
-                     + (line.option.isSplit ? " · \(line.option.paths.count) parts, not loadable" : ""))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text(line.memory.summary)
-                .font(.caption)
-                .foregroundStyle(line.isUsable && line.memory.rating != .tooLarge ? Color.primary : Color.secondary)
-        }
-        .accessibilityElement(children: .combine)
     }
 }

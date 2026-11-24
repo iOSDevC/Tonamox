@@ -13,18 +13,19 @@ enum RunBlocker {
     /// Short label for a picker row.
     var label: String {
         switch self {
-        case .simulatorMLX: "device only"
-        case .tooLarge: "too large now"
-        case .unsized: "size unknown"
+        case .simulatorMLX: String(localized: "device only", bundle: .module)
+        case .tooLarge: String(localized: "too large now", bundle: .module)
+        case .unsized: String(localized: "size unknown", bundle: .module)
         }
     }
 
     /// Full sentence for Try it.
     var explanation: String {
         switch self {
-        case .simulatorMLX: "MLX can't run on the Simulator; Try it needs a device."
-        case .tooLarge: "Too large for this device's free memory right now."
-        case .unsized: "Try it needs the size from a search result; download it from Search."
+        case .simulatorMLX: String(localized: "MLX can't run on the Simulator; Try it needs a device.", bundle: .module)
+        case .tooLarge: String(localized: "Too large for this device's free memory right now.", bundle: .module)
+        case .unsized:
+            String(localized: "Try it needs the size from a search result; download it from Search.", bundle: .module)
         }
     }
 
@@ -47,7 +48,7 @@ struct ModelTrialView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var reply = ""
-    @State private var stage = "Loading…"
+    @State private var stage = String(localized: "Loading…", bundle: .module)
     @State private var failure: String?
     @State private var run: Task<Void, Never>?
     @State private var isFinished = false
@@ -58,8 +59,8 @@ struct ModelTrialView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Prompt") { Text(Self.prompt) }
-                Section("Reply") {
+                Section(String(localized: "Prompt", bundle: .module)) { Text(Self.prompt) }
+                Section(String(localized: "Reply", bundle: .module)) {
                     if let failure {
                         Label(failure, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
@@ -83,7 +84,7 @@ struct ModelTrialView: View {
             .navigationTitle(candidate.displayName)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") {
+                    Button(String(localized: "Done", bundle: .module)) {
                         stop(reason: nil)
                         dismiss()
                     }
@@ -97,7 +98,7 @@ struct ModelTrialView: View {
         .onDisappear { stop(reason: nil) }
         #if canImport(UIKit)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
-            stop(reason: "Stopped: the system reported low memory.")
+            stop(reason: String(localized: "Stopped: the system reported low memory.", bundle: .module))
         }
         #endif
     }
@@ -107,7 +108,7 @@ struct ModelTrialView: View {
         if let blocker = RunBlocker.check(candidate, requiresSize: true) {
             failure = blocker.explanation
             isFinished = true
-            stage = "Not loaded."
+            stage = String(localized: "Not loaded.", bundle: .module)
             return
         }
         let target = candidate
@@ -119,22 +120,24 @@ struct ModelTrialView: View {
                 // A cancelled load can still finish; don't generate with it.
                 try Task.checkCancellation()
                 let loaded = ContinuousClock.now
-                stage = "Loaded in \(Self.seconds(loaded - started)). Generating…"
+                stage = String(localized: "Loaded in \(Self.seconds(loaded - started)). Generating…", bundle: .module)
                 let text = try await session.chat(Self.prompt, maxTokens: 32)
                 try Task.checkCancellation()
                 reply = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                outcome = "Loaded in \(Self.seconds(loaded - started)), replied in "
-                    + "\(Self.seconds(ContinuousClock.now - loaded))."
+                let replied = Self.seconds(ContinuousClock.now - loaded)
+                outcome = String(localized: "Loaded in \(Self.seconds(loaded - started)), replied in \(replied).",
+                                 bundle: .module)
             } catch is CancellationError {
-                outcome = "Cancelled."
+                outcome = String(localized: "Cancelled.", bundle: .module)
             } catch {
                 failure = error.localizedDescription
             }
             // Unload whatever happens, so a test never keeps gigabytes resident; report it only once done.
             ModelManager.shared.evict(target)
             isFinished = true
-            if let stopReason { failure = stopReason + " The model was unloaded." }
-            stage = outcome.isEmpty ? "Unloaded." : outcome + " Unloaded."
+            if let stopReason { failure = String(localized: "\(stopReason) The model was unloaded.", bundle: .module) }
+            stage = outcome.isEmpty ? String(localized: "Unloaded.", bundle: .module)
+                : String(localized: "\(outcome) Unloaded.", bundle: .module)
         }
     }
 

@@ -1,0 +1,2738 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@ Delete the partial file and retry." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Elimina el archivo parcial y vuelve a intentarlo."
+          }
+        }
+      }
+    },
+    "%@ GB (measured)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ GB (medido)"
+          }
+        }
+      }
+    },
+    "%@ The model was unloaded." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ El modelo se quitó de la memoria."
+          }
+        }
+      }
+    },
+    "%@ The partial file is kept; Resume continues from it." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ El archivo parcial se conserva; «Reanudar» sigue desde él."
+          }
+        }
+      }
+    },
+    "%@ Unloaded." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Quitado de la memoria."
+          }
+        }
+      }
+    },
+    "%@ download" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "descarga de %@"
+          }
+        }
+      }
+    },
+    "%@ is downloading. Cancel the download before deleting it." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ se está descargando. Cancela la descarga antes de eliminarlo."
+          }
+        }
+      }
+    },
+    "%@ of %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ de %2$@"
+          }
+        }
+      }
+    },
+    "%@ · %.1f of %.1f GB" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$.1f de %3$.1f GB"
+          }
+        }
+      }
+    },
+    "%@ · %@ free" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@ libres"
+          }
+        }
+      }
+    },
+    "%@. %@. %@. Gated repository." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. %2$@. %3$@. Repositorio con acceso restringido."
+          }
+        }
+      }
+    },
+    "%@. Checking compatibility." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@. Comprobando la compatibilidad."
+          }
+        }
+      }
+    },
+    "%lld hidden: they would not run here" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hidden: it would not run here"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hidden: they would not run here"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld oculto: no correría aquí"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ocultos: no correrían aquí"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld results" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld result"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld results"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld resultado"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld resultados"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld tokens" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld token"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tokens"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld token"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld tokens"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld turns" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld turn"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld turns"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld turno"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld turnos"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "A finished copy is already on disk; Delete removes only this unfinished file." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ya hay una copia terminada en el disco; «Eliminar» borra solo este archivo sin terminar."
+          }
+        }
+      }
+    },
+    "Accept the license on huggingface.co" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aceptar la licencia en huggingface.co"
+          }
+        }
+      }
+    },
+    "Adapter (LoRA)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adaptador (LoRA)"
+          }
+        }
+      }
+    },
+    "Adapter (LoRA) for %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adaptador (LoRA) para %@"
+          }
+        }
+      }
+    },
+    "Adapter, not a model" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adaptador, no un modelo"
+          }
+        }
+      }
+    },
+    "Add a token" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir un token"
+          }
+        }
+      }
+    },
+    "Analyze Image" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Analizar la imagen"
+          }
+        }
+      }
+    },
+    "Another download changed this file. Download it again." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otra descarga cambió este archivo. Vuelve a descargarlo."
+          }
+        }
+      }
+    },
+    "Another download is running." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hay otra descarga en curso."
+          }
+        }
+      }
+    },
+    "Architecture" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arquitectura"
+          }
+        }
+      }
+    },
+    "Architecture, header read, licence and the evidence behind the answer above." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arquitectura, lectura de la cabecera, licencia y las pruebas detrás de la respuesta de arriba."
+          }
+        }
+      }
+    },
+    "Ask something..." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pregunta algo…"
+          }
+        }
+      }
+    },
+    "Assistant is typing: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El asistente está escribiendo: %@"
+          }
+        }
+      }
+    },
+    "Assistant: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asistente: %@"
+          }
+        }
+      }
+    },
+    "Available" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disponibles"
+          }
+        }
+      }
+    },
+    "Blocker" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloqueo"
+          }
+        }
+      }
+    },
+    "Cancel" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
+          }
+        }
+      }
+    },
+    "Cancel download" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar la descarga"
+          }
+        }
+      }
+    },
+    "Cancelled." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelado."
+          }
+        }
+      }
+    },
+    "Cannot run here: %@. %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No puede funcionar aquí: %1$@. %2$@"
+          }
+        }
+      }
+    },
+    "Caveat" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvedad"
+          }
+        }
+      }
+    },
+    "Caveat: %@." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvedad: %@."
+          }
+        }
+      }
+    },
+    "Chat runs on this device. Pick another model from the menu, or download this one." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El chat funciona en este dispositivo. Elige otro modelo en el menú o descarga este."
+          }
+        }
+      }
+    },
+    "Chats and keeps your conversations on this device" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chatea y guarda tus conversaciones en este dispositivo"
+          }
+        }
+      }
+    },
+    "Checking" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando"
+          }
+        }
+      }
+    },
+    "Checking %@…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando %@…"
+          }
+        }
+      }
+    },
+    "Checking (%lld)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando (%lld)"
+          }
+        }
+      }
+    },
+    "Checking size…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando el tamaño…"
+          }
+        }
+      }
+    },
+    "Checking…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprobando…"
+          }
+        }
+      }
+    },
+    "Compatible only" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo compatibles"
+          }
+        }
+      }
+    },
+    "Complete" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completo"
+          }
+        }
+      }
+    },
+    "Conversations" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conversaciones"
+          }
+        }
+      }
+    },
+    "Copied" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiada"
+          }
+        }
+      }
+    },
+    "Copy catalog entry" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar la entrada del catálogo"
+          }
+        }
+      }
+    },
+    "Could not check (%lld)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo comprobar (%lld)"
+          }
+        }
+      }
+    },
+    "Could not check this repo" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo comprobar este repositorio"
+          }
+        }
+      }
+    },
+    "Could not delete %@: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo eliminar %1$@: %2$@"
+          }
+        }
+      }
+    },
+    "Could not save: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo guardar: %@"
+          }
+        }
+      }
+    },
+    "Create a read token on huggingface.co" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crear un token de lectura en huggingface.co"
+          }
+        }
+      }
+    },
+    "Custom prompt..." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instrucción personalizada…"
+          }
+        }
+      }
+    },
+    "Decode estimate" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocidad estimada"
+          }
+        }
+      }
+    },
+    "Delete" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar"
+          }
+        }
+      }
+    },
+    "Delete %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar %@"
+          }
+        }
+      }
+    },
+    "Delete %@?" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar %@?"
+          }
+        }
+      }
+    },
+    "Delete partial download" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar la descarga parcial"
+          }
+        }
+      }
+    },
+    "Delete, free %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar y liberar %@"
+          }
+        }
+      }
+    },
+    "Deleted %@, freed %@." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se eliminó %1$@ y se liberaron %2$@."
+          }
+        }
+      }
+    },
+    "Describes images and answers questions about them" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Describe imágenes y responde preguntas sobre ellas"
+          }
+        }
+      }
+    },
+    "Device" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dispositivo"
+          }
+        }
+      }
+    },
+    "Device and filter" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dispositivo y filtro"
+          }
+        }
+      }
+    },
+    "Documents are read on this device. Pick another model above, or download this one." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los documentos se leen en este dispositivo. Elige otro modelo arriba o descarga este."
+          }
+        }
+      }
+    },
+    "Done" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listo"
+          }
+        }
+      }
+    },
+    "Download" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargar"
+          }
+        }
+      }
+    },
+    "Download %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargar %@"
+          }
+        }
+      }
+    },
+    "Download a model from a search result." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descarga un modelo desde un resultado de búsqueda."
+          }
+        }
+      }
+    },
+    "Download failed." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La descarga falló."
+          }
+        }
+      }
+    },
+    "Downloaded" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargados"
+          }
+        }
+      }
+    },
+    "Downloaded." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargado."
+          }
+        }
+      }
+    },
+    "Downloading elsewhere" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargando en otro lugar"
+          }
+        }
+      }
+    },
+    "Downloads" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descargas"
+          }
+        }
+      }
+    },
+    "Downloads stop if the app stays in the background; Resume continues from the partial file." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las descargas se detienen si la app se queda en segundo plano; «Reanudar» sigue desde el archivo parcial."
+          }
+        }
+      }
+    },
+    "Estimated decode speed on this device — %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Velocidad de generación estimada en este dispositivo — %@"
+          }
+        }
+      }
+    },
+    "Even the smallest version, %@, needs %.1f GB: %.1f GB over the %.1f GB limit." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incluso la versión más pequeña, %1$@, necesita %2$.1f GB: %3$.1f GB más que el límite de %4$.1f GB."
+          }
+        }
+      }
+    },
+    "Excellent" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excelente"
+          }
+        }
+      }
+    },
+    "Extract Document" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extraer el documento"
+          }
+        }
+      }
+    },
+    "Extracts text and structure from photos of documents" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extrae texto y estructura de fotos de documentos"
+          }
+        }
+      }
+    },
+    "Fetches config, tokenizer and safetensors from main only." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descarga config, tokenizer y safetensors solo de main."
+          }
+        }
+      }
+    },
+    "File not found at main (renamed or removed)." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontró el archivo en main (se renombró o se eliminó)."
+          }
+        }
+      }
+    },
+    "Find on Hugging Face…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar en Hugging Face…"
+          }
+        }
+      }
+    },
+    "Fit" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encaje"
+          }
+        }
+      }
+    },
+    "Format" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Formato"
+          }
+        }
+      }
+    },
+    "GGUF Models (llama.cpp)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos GGUF (llama.cpp)"
+          }
+        }
+      }
+    },
+    "Gated" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restringido"
+          }
+        }
+      }
+    },
+    "Generating response" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generando la respuesta"
+          }
+        }
+      }
+    },
+    "Good" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bien"
+          }
+        }
+      }
+    },
+    "HYBRID" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HÍBRIDO"
+          }
+        }
+      }
+    },
+    "Head dim" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dimensión de cabeza"
+          }
+        }
+      }
+    },
+    "Hides results rated Won't run; unchecked results stay visible" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oculta los resultados que no funcionan; los que aún no se comprobaron siguen visibles"
+          }
+        }
+      }
+    },
+    "Hugging Face token" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token de Hugging Face"
+          }
+        }
+      }
+    },
+    "Image generation" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generación de imágenes"
+          }
+        }
+      }
+    },
+    "Images are analyzed on this device. Pick another model in Settings, or download this one." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las imágenes se analizan en este dispositivo. Elige otro modelo en Ajustes o descarga este."
+          }
+        }
+      }
+    },
+    "Importance matrix" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Matriz de importancia"
+          }
+        }
+      }
+    },
+    "In a subfolder: the downloader fetches top-level files only" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En una subcarpeta: el descargador solo baja archivos de la raíz"
+          }
+        }
+      }
+    },
+    "Info" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Info"
+          }
+        }
+      }
+    },
+    "Judges every result against this device's memory budget" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Evalúa cada resultado según la memoria disponible de este dispositivo"
+          }
+        }
+      }
+    },
+    "KV heads" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cabezas KV"
+          }
+        }
+      }
+    },
+    "Keep the screen awake while downloading" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener la pantalla encendida mientras descarga"
+          }
+        }
+      }
+    },
+    "Layers" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Capas"
+          }
+        }
+      }
+    },
+    "Leftover" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sobrante"
+          }
+        }
+      }
+    },
+    "License" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Licencia"
+          }
+        }
+      }
+    },
+    "Likes" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Me gusta"
+          }
+        }
+      }
+    },
+    "Loaded in %@, replied in %@." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargado en %1$@, respondió en %2$@."
+          }
+        }
+      }
+    },
+    "Loaded in %@. Generating…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargado en %@. Generando…"
+          }
+        }
+      }
+    },
+    "Loading…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargando…"
+          }
+        }
+      }
+    },
+    "Loads as" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se carga como"
+          }
+        }
+      }
+    },
+    "MLX Models" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelos MLX"
+          }
+        }
+      }
+    },
+    "MLX can't run on the Simulator; Try it needs a device." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MLX no funciona en el simulador; «Probar» necesita un dispositivo."
+          }
+        }
+      }
+    },
+    "MLX can't run on the Simulator; it needs a device." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MLX no funciona en el simulador; necesita un dispositivo."
+          }
+        }
+      }
+    },
+    "Marginal" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Justo"
+          }
+        }
+      }
+    },
+    "Maybe an adapter" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quizá un adaptador"
+          }
+        }
+      }
+    },
+    "Memory limit" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Límite de memoria"
+          }
+        }
+      }
+    },
+    "Memory on %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memoria en %@"
+          }
+        }
+      }
+    },
+    "Mixture of experts: uncalibrated decode range on this device — %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mezcla de expertos: rango de velocidad sin calibrar en este dispositivo — %@"
+          }
+        }
+      }
+    },
+    "Mode" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modo"
+          }
+        }
+      }
+    },
+    "Model" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo"
+          }
+        }
+      }
+    },
+    "Name" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre"
+          }
+        }
+      }
+    },
+    "Needed only for gated or private repos: accept the license on the repo page first, then create a read token. GGUF and MLX downloads and the compatibility check send it to huggingface.co only. Stored in the Keychain on this device and never synced. Apps that share Tonamox storage through an App Group read the same token. Search stays anonymous, so private repos don't appear in results." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo hace falta para repositorios restringidos o privados: primero acepta la licencia en la página del repositorio y luego crea un token de lectura. Las descargas GGUF y MLX y la comprobación de compatibilidad lo envían solo a huggingface.co. Se guarda en el llavero de este dispositivo y nunca se sincroniza. Las apps que comparten el almacenamiento de Tonamox mediante un App Group leen el mismo token. La búsqueda sigue siendo anónima, así que los repositorios privados no aparecen en los resultados."
+          }
+        }
+      }
+    },
+    "Needs %.1f GB of memory · limit %.1f GB" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Necesita %1$.1f GB de memoria · límite %2$.1f GB"
+          }
+        }
+      }
+    },
+    "Needs %@, %@ free." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Necesita %1$@; hay %2$@ libres."
+          }
+        }
+      }
+    },
+    "Needs a manual download" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Necesita una descarga manual"
+          }
+        }
+      }
+    },
+    "No" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No"
+          }
+        }
+      }
+    },
+    "No MLX/GGUF weights" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin pesos MLX/GGUF"
+          }
+        }
+      }
+    },
+    "No catalog entry: the model can't run here." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin entrada de catálogo: el modelo no funciona aquí."
+          }
+        }
+      }
+    },
+    "No conversations" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin conversaciones"
+          }
+        }
+      }
+    },
+    "No downloads" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin descargas"
+          }
+        }
+      }
+    },
+    "No single-file version (quantization) fits this device." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ninguna versión (cuantización) de un solo archivo cabe en este dispositivo."
+          }
+        }
+      }
+    },
+    "No token" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin token"
+          }
+        }
+      }
+    },
+    "Not a standalone model" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No es un modelo independiente"
+          }
+        }
+      }
+    },
+    "Not declared" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin declarar"
+          }
+        }
+      }
+    },
+    "Not loaded." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se cargó."
+          }
+        }
+      }
+    },
+    "OCR / Document" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OCR / Documento"
+          }
+        }
+      }
+    },
+    "On disk: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En disco: %@"
+          }
+        }
+      }
+    },
+    "On disk: %@ · %@ free" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En disco: %1$@ · %2$@ libres"
+          }
+        }
+      }
+    },
+    "Only by layer streaming, much slower. %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo cargando por capas, mucho más lento. %@"
+          }
+        }
+      }
+    },
+    "Open on Hugging Face" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir en Hugging Face"
+          }
+        }
+      }
+    },
+    "Other files, not versions of the model" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otros archivos, no versiones del modelo"
+          }
+        }
+      }
+    },
+    "Output" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resultado"
+          }
+        }
+      }
+    },
+    "Outputs DocTags → converted to Markdown" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genera DocTags → convertidos a Markdown"
+          }
+        }
+      }
+    },
+    "Outputs structured JSON" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Genera JSON estructurado"
+          }
+        }
+      }
+    },
+    "Paused" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En pausa"
+          }
+        }
+      }
+    },
+    "Preparing…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparando…"
+          }
+        }
+      }
+    },
+    "Probably an adapter, not a model" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Probablemente un adaptador, no un modelo"
+          }
+        }
+      }
+    },
+    "Prompt" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instrucción"
+          }
+        }
+      }
+    },
+    "Quantization" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuantización"
+          }
+        }
+      }
+    },
+    "REMOTE" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "REMOTO"
+          }
+        }
+      }
+    },
+    "Ready" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Listo"
+          }
+        }
+      }
+    },
+    "Recent" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recientes"
+          }
+        }
+      }
+    },
+    "Recommended" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recomendada"
+          }
+        }
+      }
+    },
+    "Recommended version: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión recomendada: %@"
+          }
+        }
+      }
+    },
+    "Recommended version: %@ (%@)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión recomendada: %1$@ (%2$@)"
+          }
+        }
+      }
+    },
+    "Remove token" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar el token"
+          }
+        }
+      }
+    },
+    "Removed." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitado."
+          }
+        }
+      }
+    },
+    "Reply" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Respuesta"
+          }
+        }
+      }
+    },
+    "Repo not found, renamed or private. A private repo needs a read token with access to it." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repositorio no encontrado, renombrado o privado. Uno privado necesita un token de lectura con acceso a él."
+          }
+        }
+      }
+    },
+    "Resume" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reanudar"
+          }
+        }
+      }
+    },
+    "Resume (%@ of %@ on disk)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reanudar (%1$@ de %2$@ en disco)"
+          }
+        }
+      }
+    },
+    "Resume download" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reanudar la descarga"
+          }
+        }
+      }
+    },
+    "Resume needs the size from a search result; resume it from Search or delete it." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para reanudar hace falta el tamaño de un resultado de búsqueda; reanúdalo desde la búsqueda o elimínalo."
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reintentar"
+          }
+        }
+      }
+    },
+    "Runs" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funciona"
+          }
+        }
+      }
+    },
+    "Runs slowly on %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funciona lento en %@"
+          }
+        }
+      }
+    },
+    "Runs, with caveats" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funciona, con salvedades"
+          }
+        }
+      }
+    },
+    "Save token" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar el token"
+          }
+        }
+      }
+    },
+    "Saved. Downloads and checks now send it to huggingface.co only." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardado. Las descargas y comprobaciones ahora lo envían solo a huggingface.co."
+          }
+        }
+      }
+    },
+    "Search Hugging Face models" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar modelos en Hugging Face"
+          }
+        }
+      }
+    },
+    "Searching…" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscando…"
+          }
+        }
+      }
+    },
+    "Send message" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviar mensaje"
+          }
+        }
+      }
+    },
+    "Settings" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajustes"
+          }
+        }
+      }
+    },
+    "Show all" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show all"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar todos"
+          }
+        }
+      }
+    },
+    "Shows %@ and repos that declare no task." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra %@ y los repositorios que no declaran tarea."
+          }
+        }
+      }
+    },
+    "Shows %@." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra %@."
+          }
+        }
+      }
+    },
+    "Shows the memory this search judges against and the Compatible only filter" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra la memoria con la que se juzga cada resultado y el filtro Solo compatibles"
+          }
+        }
+      }
+    },
+    "Simulator: memory is the Mac's, not an iPhone's." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simulador: la memoria es la de la Mac, no la de un iPhone."
+          }
+        }
+      }
+    },
+    "Smaller versions need less memory and lose some quality. Dimmed versions cannot load here." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las versiones más pequeñas necesitan menos memoria y pierden algo de calidad. Las atenuadas no se pueden cargar aquí."
+          }
+        }
+      }
+    },
+    "Sort" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orden"
+          }
+        }
+      }
+    },
+    "Split into %lld parts: Tonamox loads single files only" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Split into %lld part: Tonamox loads single files only"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Split into %lld parts: Tonamox loads single files only"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Dividida en %lld parte: Tonamox solo carga archivos únicos"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Dividida en %lld partes: Tonamox solo carga archivos únicos"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Standard" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estándar"
+          }
+        }
+      }
+    },
+    "Status" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estado"
+          }
+        }
+      }
+    },
+    "Stop generating" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detener la respuesta"
+          }
+        }
+      }
+    },
+    "Stopped: the system reported low memory." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detenido: el sistema avisó de poca memoria."
+          }
+        }
+      }
+    },
+    "Stored in Application Support and excluded from backups." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se guarda en Application Support y no entra en las copias de seguridad."
+          }
+        }
+      }
+    },
+    "Stream" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En streaming"
+          }
+        }
+      }
+    },
+    "Streaming" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por capas"
+          }
+        }
+      }
+    },
+    "Tap to download and run" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca para descargar y ejecutar"
+          }
+        }
+      }
+    },
+    "Tap to run" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca para ejecutar"
+          }
+        }
+      }
+    },
+    "Tap to select image" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca para elegir una imagen"
+          }
+        }
+      }
+    },
+    "Technical details (%lld findings)" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Technical details (%lld finding)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Technical details (%lld findings)"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Detalles técnicos (%lld hallazgo)"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Detalles técnicos (%lld hallazgos)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Test" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Probar"
+          }
+        }
+      }
+    },
+    "Text" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Texto"
+          }
+        }
+      }
+    },
+    "Text Chat" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat de texto"
+          }
+        }
+      }
+    },
+    "The download did not match its published checksum and was deleted. Download it again." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La descarga no coincidía con su suma de comprobación publicada y se eliminó. Vuelve a descargarla."
+          }
+        }
+      }
+    },
+    "The files are removed from this device. Downloading again needs the network." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los archivos se eliminan de este dispositivo. Para volver a descargarlos necesitas conexión."
+          }
+        }
+      }
+    },
+    "This file is downloading elsewhere in the app." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este archivo se está descargando en otra parte de la app."
+          }
+        }
+      }
+    },
+    "This repo is gated. Accept its license on huggingface.co and add a read token." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este repositorio tiene acceso restringido. Acepta su licencia en huggingface.co y añade un token de lectura."
+          }
+        }
+      }
+    },
+    "Tight fit on %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muy justo en %@"
+          }
+        }
+      }
+    },
+    "Tight fit, under 20 %% headroom. %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muy justo, menos del 20 %% de margen. %@"
+          }
+        }
+      }
+    },
+    "Token saved" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token guardado"
+          }
+        }
+      }
+    },
+    "Too Large" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demasiado grande"
+          }
+        }
+      }
+    },
+    "Too large for %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demasiado grande para %@"
+          }
+        }
+      }
+    },
+    "Too large for this device's free memory right now." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demasiado grande para la memoria libre de este dispositivo ahora mismo."
+          }
+        }
+      }
+    },
+    "Too large. %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Demasiado grande. %@"
+          }
+        }
+      }
+    },
+    "Trained context" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contexto de entrenamiento"
+          }
+        }
+      }
+    },
+    "Transformers safetensors" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Safetensors de Transformers"
+          }
+        }
+      }
+    },
+    "Trending" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tendencia"
+          }
+        }
+      }
+    },
+    "Try it" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Probar"
+          }
+        }
+      }
+    },
+    "Try it needs the size from a search result; download it from Search." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Probar» necesita el tamaño de un resultado de búsqueda; descárgalo desde la búsqueda."
+          }
+        }
+      }
+    },
+    "Turns off Compatible only" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turns off Compatible only"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactiva Solo compatibles"
+          }
+        }
+      }
+    },
+    "Unknown" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desconocido"
+          }
+        }
+      }
+    },
+    "Unloaded." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitado de la memoria."
+          }
+        }
+      }
+    },
+    "Use the compose button to start a new chat." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa el botón de redactar para empezar un chat nuevo."
+          }
+        }
+      }
+    },
+    "Verdict: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veredicto: %@"
+          }
+        }
+      }
+    },
+    "Version (quantization)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versión (cuantización)"
+          }
+        }
+      }
+    },
+    "Versions (quantizations) on %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versiones (cuantizaciones) en %@"
+          }
+        }
+      }
+    },
+    "Vision" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visión"
+          }
+        }
+      }
+    },
+    "Vision (image + text)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visión (imagen + texto)"
+          }
+        }
+      }
+    },
+    "Vision projector" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proyector de visión"
+          }
+        }
+      }
+    },
+    "Vision weights" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesos de visión"
+          }
+        }
+      }
+    },
+    "Weights" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesos"
+          }
+        }
+      }
+    },
+    "Won't run" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No funciona"
+          }
+        }
+      }
+    },
+    "Won't run here (%lld)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No funcionarían aquí (%lld)"
+          }
+        }
+      }
+    },
+    "Won't run on %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No funciona en %@"
+          }
+        }
+      }
+    },
+    "Works here (%lld)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funcionan (%lld)"
+          }
+        }
+      }
+    },
+    "Works on %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funciona en %@"
+          }
+        }
+      }
+    },
+    "Works with caveats (%lld)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funcionan con salvedades (%lld)"
+          }
+        }
+      }
+    },
+    "Yes" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sí"
+          }
+        }
+      }
+    },
+    "Yes (%@)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sí (%@)"
+          }
+        }
+      }
+    },
+    "You: %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tú: %@"
+          }
+        }
+      }
+    },
+    "balanced, a little smaller" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "equilibrada, algo más pequeña"
+          }
+        }
+      }
+    },
+    "balanced, common default" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "equilibrada, la habitual"
+          }
+        }
+      }
+    },
+    "device only" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "solo en dispositivo"
+          }
+        }
+      }
+    },
+    "fast" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "rápido"
+          }
+        }
+      }
+    },
+    "high quality, larger" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "calidad alta, más grande"
+          }
+        }
+      }
+    },
+    "models.json entry" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrada de models.json"
+          }
+        }
+      }
+    },
+    "near-lossless, large" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "casi sin pérdida, grande"
+          }
+        }
+      }
+    },
+    "recommended" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "recomendada"
+          }
+        }
+      }
+    },
+    "size unknown" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tamaño desconocido"
+          }
+        }
+      }
+    },
+    "slow" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lento"
+          }
+        }
+      }
+    },
+    "small, lower quality" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "pequeña, menos calidad"
+          }
+        }
+      }
+    },
+    "smallest, lowest quality" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "la más pequeña, la de menos calidad"
+          }
+        }
+      }
+    },
+    "speed unknown" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "velocidad desconocida"
+          }
+        }
+      }
+    },
+    "this %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "este %@"
+          }
+        }
+      }
+    },
+    "too large now" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "demasiado grande ahora"
+          }
+        }
+      }
+    },
+    "too slow" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "demasiado lento"
+          }
+        }
+      }
+    },
+    "unquantized, full size" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sin cuantizar, tamaño completo"
+          }
+        }
+      }
+    },
+    "usable" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "usable"
+          }
+        }
+      }
+    },
+    "very high quality, large" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "calidad muy alta, grande"
+          }
+        }
+      }
+    },
+    "~%.0f–%.0f tok/s (uncalibrated MoE range)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "~%.0f–%.0f tok/s (rango MoE sin calibrar)"
+          }
+        }
+      }
+    },
+    "≈%@ GB (estimate)" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "≈%@ GB (estimado)"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

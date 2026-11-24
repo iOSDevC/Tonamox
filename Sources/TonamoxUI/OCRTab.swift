@@ -46,12 +46,13 @@ public struct OCRTab: View {
                     // Model picker
                     GroupBox {
                         VStack(alignment: .leading, spacing: 8) {
-                            LabeledPicker("Model", selection: $selectedModel, items: Model.specializedModels)
+                            LabeledPicker(String(localized: "Model", bundle: .module), selection: $selectedModel, items: Model.specializedModels)
                             
                             // Model description
                             if case .visionSpecialized(let docTags) = selectedModel.purpose {
                                 Label(
-                                    docTags ? "Outputs DocTags → converted to Markdown" : "Outputs structured JSON",
+                                    docTags ? String(localized: "Outputs DocTags → converted to Markdown", bundle: .module)
+                                        : String(localized: "Outputs structured JSON", bundle: .module),
                                     systemImage: docTags ? "doc.richtext" : "curlybraces"
                                 )
                                 .font(.caption)
@@ -59,7 +60,7 @@ public struct OCRTab: View {
                             }
                         }
                     } label: {
-                        Label("Model", systemImage: "cpu")
+                        Label(String(localized: "Model", bundle: .module), systemImage: "cpu")
                             .font(.subheadline.weight(.semibold))
                     }
                     
@@ -70,7 +71,7 @@ public struct OCRTab: View {
                 }
                 .padding()
             }
-            .navigationTitle("OCR / Document")
+            .navigationTitle(Text("OCR / Document", bundle: .module))
             .background(Color.groupedBackground)
         }
         .onAppear {
@@ -85,7 +86,7 @@ public struct OCRTab: View {
     @ViewBuilder private var runButtonSection: some View {
         if autoDownload || selectedModel.isDownloaded {
             RunButton(
-                title: "Extract Document",
+                title: String(localized: "Extract Document", bundle: .module),
                 subtitle: "\(selectedModel.approximateSizeMB) MB",
                 isDownloaded: selectedModel.isDownloaded,
                 isLoading: vm.isLoading,
@@ -97,9 +98,12 @@ public struct OCRTab: View {
             .disabled(vm.selectedImage == nil)
         } else {
             ModelDownloadPlaceholder(
-                "Download \(selectedModel.displayName)",
-                message: "Documents are read on this device. Pick another model above, or download this one.",
-                models: [RequiredModel(selectedModel, purpose: "Extracts text and structure from photos of documents")]
+                String(localized: "Download \(selectedModel.displayName)", bundle: .module),
+                message: String(localized: "Documents are read on this device. Pick another model above, or download this one.",
+                                bundle: .module),
+                models: [RequiredModel(selectedModel,
+                                       purpose: String(localized: "Extracts text and structure from photos of documents",
+                                                       bundle: .module))]
             )
         }
     }

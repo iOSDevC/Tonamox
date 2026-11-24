@@ -26,6 +26,7 @@ public struct DownloadedModelsList: View {
     @State private var freeBytes: Int64?
     @State private var notice: String?
     @State private var trial: Model?
+    @State private var pendingDelete: DownloadedEntry?
 
     public init() {}
 
@@ -45,16 +46,17 @@ public struct DownloadedModelsList: View {
                 footer
             }
             Section {
-                Toggle("Keep the screen awake while downloading", isOn: $downloads.keepsScreenAwake)
+                Toggle(String(localized: "Keep the screen awake while downloading", bundle: .module),
+                       isOn: $downloads.keepsScreenAwake)
             }
         }
         .overlay {
             if entries.isEmpty {
-                ContentUnavailableView("No downloads", systemImage: "arrow.down.circle",
-                                       description: Text("Download a model from a search result."))
+                ContentUnavailableView(String(localized: "No downloads", bundle: .module), systemImage: "arrow.down.circle",
+                                       description: Text("Download a model from a search result.", bundle: .module))
             }
         }
-        .navigationTitle("Downloads")
+        .navigationTitle(Text("Downloads", bundle: .module))
         .task(id: center.revision) { refresh() }
         .refreshable { refresh() }
         .sheet(item: $trial) { ModelTrialView(candidate: $0) }
@@ -66,13 +68,11 @@ public struct DownloadedModelsList: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(entry.title)
                 .font(.body.weight(.medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Text("\(entry.formatLabel) · \(entry.detail)")
+                .fixedSize(horizontal: false, vertical: true)
+            Text(verbatim: "\(entry.formatLabel) · \(entry.detail)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
             HStack {
                 status(of: entry)
                 Text(ByteText.text(entry.sizeBytes))
@@ -93,39 +93,55 @@ public struct DownloadedModelsList: View {
         .buttonStyle(.borderless)
         .swipeActions { deleteButton(for: entry) }
         .contextMenu { deleteButton(for: entry) }
+        .confirmationDialog(String(localized: "Delete \(entry.title)?", bundle: .module), isPresented: deletePrompt(for: entry),
+                            titleVisibility: .visible) {
+            Button(String(localized: "Delete, free \(ByteText.text(entry.sizeBytes))", bundle: .module), role: .destructive) {
+                delete(entry)
+            }
+        } message: {
+            Text("The files are removed from this device. Downloading again needs the network.", bundle: .module)
+        }
     }
 
     private func status(of entry: DownloadedEntry) -> some View {
-        if entry.isComplete { return Label("Complete", systemImage: "checkmark.circle") }
-        if entry.isLeftover { return Label("Leftover", systemImage: "doc.badge.ellipsis") }
-        return Label("Paused", systemImage: "pause.circle")
+        if entry.isComplete { return Label(String(localized: "Complete", bundle: .module), systemImage: "checkmark.circle") }
+        if entry.isLeftover { return Label(String(localized: "Leftover", bundle: .module), systemImage: "doc.badge.ellipsis") }
+        return Label(String(localized: "Paused", bundle: .module), systemImage: "pause.circle")
     }
 
     @ViewBuilder private func actions(for entry: DownloadedEntry) -> some View {
         if let candidate = entry.candidate, !entry.isLeftover {
             if entry.isComplete {
-                Button("Try it") { trial = candidate }
+                Button(String(localized: "Try it", bundle: .module)) { trial = candidate }
                     .disabled(tryItBlocker(entry) != nil)
             } else if center.activeModelID == candidate.id {
-                Button("Cancel") { center.cancel() }
+                Button(String(localized: "Cancel", bundle: .module)) { center.cancel() }
             } else {
                 // Only a recorded file is recorded again: a catalog model is already registered.
-                Button("Resume") { center.start(candidate, records: DownloadRecords.standard.contains(candidate)) }
+                Button(String(localized: "Resume", bundle: .module)) { center.start(candidate, records: DownloadRecords.standard.contains(candidate)) }
                     .disabled(center.isBusy || center.isWritingElsewhere(candidate) || isUnsized(candidate))
             }
         }
+        deleteButton(for: entry)
+            .labelStyle(.titleOnly)
     }
 
     private func deleteButton(for entry: DownloadedEntry) -> some View {
-        Button("Delete", systemImage: "trash", role: .destructive) { delete(entry) }
+        Button(String(localized: "Delete", bundle: .module), systemImage: "trash", role: .destructive) { pendingDelete = entry }
             .disabled(entry.candidate == nil || entry.candidate?.id == center.activeModelID)
+    }
+
+    private func deletePrompt(for entry: DownloadedEntry) -> Binding<Bool> {
+        Binding(get: { pendingDelete?.id == entry.id }, set: { if !$0 { pendingDelete = nil } })
     }
 
     private var footer: some View {
         VStack(alignment: .leading, spacing: 4) {
             let total = entries.map(\.sizeBytes).reduce(0, +)
-            Text("On disk: \(ByteText.text(total))" + (freeBytes.map { " · \(ByteText.text($0)) free" } ?? ""))
-            Text("Stored in Application Support and excluded from backups.")
+            let onDisk = ByteText.text(total)
+            Text(freeBytes.map { String(localized: "On disk: \(onDisk) · \(ByteText.text($0)) free", bundle: .module) }
+                 ?? String(localized: "On disk: \(onDisk)", bundle: .module))
+            Text("Stored in Application Support and excluded from backups.", bundle: .module)
         }
     }
 
@@ -139,10 +155,12 @@ public struct DownloadedModelsList: View {
     private func blockerText(_ entry: DownloadedEntry) -> String? {
         if let blocker = tryItBlocker(entry) { return blocker.explanation }
         if entry.isLeftover {
-            return "A finished copy is already on disk; Delete removes only this unfinished file."
+            return String(localized: "A finished copy is already on disk; Delete removes only this unfinished file.",
+                          bundle: .module)
         }
         guard !entry.isComplete, let candidate = entry.candidate, isUnsized(candidate) else { return nil }
-        return "Resume needs the size from a search result; resume it from Search or delete it."
+        return String(localized: "Resume needs the size from a search result; resume it from Search or delete it.",
+                      bundle: .module)
     }
 
     /// Resuming an unsized model would finish a file nothing can judge before loading.
@@ -160,9 +178,9 @@ public struct DownloadedModelsList: View {
             } else {
                 try center.delete(candidate)
             }
-            notice = "Deleted \(entry.title), freed \(ByteText.text(entry.sizeBytes))."
+            notice = String(localized: "Deleted \(entry.title), freed \(ByteText.text(entry.sizeBytes)).", bundle: .module)
         } catch {
-            notice = "Could not delete \(entry.title): \(error.localizedDescription)"
+            notice = String(localized: "Could not delete \(entry.title): \(error.localizedDescription)", bundle: .module)
         }
     }
 

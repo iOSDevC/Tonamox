@@ -21,7 +21,7 @@ struct ImagePickerPreview: View {
                             Image(systemName: "photo.badge.plus")
                                 .font(.system(size: 32))
                                 .foregroundStyle(.secondary)
-                            Text("Tap to select image")
+                            Text("Tap to select image", bundle: .module)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
