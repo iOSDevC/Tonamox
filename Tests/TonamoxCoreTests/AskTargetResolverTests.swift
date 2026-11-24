@@ -27,7 +27,10 @@ final class AskTargetResolverTests: XCTestCase {
         }
     }
 
-    private let allCloudKeys = ["OPENAI_API_KEY": "env-openai", "ANTHROPIC_API_KEY": "env-anthropic"]
+    private let allCloudKeys = [
+        "OPENAI_API_KEY": "env-openai", "ANTHROPIC_API_KEY": "env-anthropic",
+        "GOOGLE_API_KEY": "env-google", "GEMINI_API_KEY": "env-gemini",
+    ]
 
     /// Records which Keychain accounts were read.
     private final class FakeKeychain {
@@ -42,7 +45,7 @@ final class AskTargetResolverTests: XCTestCase {
 
     private func everyAccountKeychain() -> FakeKeychain {
         FakeKeychain([
-            "cloud.openai": "kc-openai", "cloud.anthropic": "kc-anthropic",
+            "cloud.openai": "kc-openai", "cloud.anthropic": "kc-anthropic", "cloud.gemini": "kc-gemini",
             "cloud.github-models": "kc-ghm",
         ])
     }
@@ -253,10 +256,43 @@ final class AskTargetResolverTests: XCTestCase {
             provider: .anthropic, environmentVariable: "ANTHROPIC_API_KEY", keychainAccount: "cloud.anthropic"))
     }
 
+    func testGoogleKeyWinsOverGeminiKeyAndKeychain() throws {
+        let keychain = everyAccountKeychain()
+        let target = try resolve(.gemini, environment: allCloudKeys, keychain: keychain)
+        XCTAssertEqual(storedKey(target.provider), "env-google")
+        XCTAssertTrue(keychain.requested.isEmpty)
+        XCTAssertEqual(target.provider.id, "cloud.gemini")
+        XCTAssertEqual(target.modelID, RemoteTarget.defaultGeminiModel)
+        XCTAssertEqual(target.origin, .cloud)
+        XCTAssertNil(target.contextLength)
+        XCTAssertEqual(try requestURL(target),
+                       "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions")
+    }
+
+    func testGeminiKeyThenKeychainAreTheGeminiFallbacks() throws {
+        let keychain = everyAccountKeychain()
+        let fromGeminiVariable = try resolve(
+            .gemini, environment: ["GOOGLE_API_KEY": " ", "GEMINI_API_KEY": "env-gemini"], keychain: keychain)
+        XCTAssertEqual(storedKey(fromGeminiVariable.provider), "env-gemini")
+        XCTAssertTrue(keychain.requested.isEmpty)
+
+        let fromKeychain = try resolve(.gemini, environment: ["GEMINI_API_KEY": ""], keychain: keychain)
+        XCTAssertEqual(storedKey(fromKeychain.provider), "kc-gemini")
+        XCTAssertEqual(keychain.requested, ["cloud.gemini"])
+    }
+
+    func testMissingGeminiKeyNamesBothVariablesAndTheAccount() {
+        let error = failure { () throws(Failure) in try resolve(.gemini) }
+        XCTAssertEqual(error, .missingAPIKey(
+            provider: .gemini, environmentVariable: "GOOGLE_API_KEY or GEMINI_API_KEY", keychainAccount: "cloud.gemini"))
+        XCTAssertEqual(error?.isUsageError, false)
+        XCTAssertEqual(error?.errorDescription?.contains("Set GOOGLE_API_KEY or GEMINI_API_KEY"), true)
+    }
+
     func testCloudDefaultsMatchCloudTargets() throws {
         let keychain = everyAccountKeychain()
         let cloud = HybridEscalator.cloudTargets(allowCloud: true, readKey: keychain.read)
-        for choice in [AskTargetResolver.Choice.openAI, .anthropic] {
+        for choice in [AskTargetResolver.Choice.openAI, .anthropic, .gemini] {
             let target = try resolve(choice, keychain: keychain)
             let twin = try XCTUnwrap(cloud.first { $0.provider.id == target.provider.id })
             XCTAssertEqual(target.modelID, twin.modelID)
@@ -303,7 +339,7 @@ final class AskTargetResolverTests: XCTestCase {
 
     func testBaseURLAndCloudProviderAreMutuallyExclusive() {
         let keychain = everyAccountKeychain()
-        for choice in [AskTargetResolver.Choice.openAI, .anthropic] {
+        for choice in [AskTargetResolver.Choice.openAI, .anthropic, .gemini] {
             let error = failure { () throws(Failure) in
                 try resolve(choice, model: "m", baseURL: "http://127.0.0.1:8080/v1",
                             environment: allCloudKeys, keychain: keychain)
@@ -354,8 +390,20 @@ final class AskTargetResolverTests: XCTestCase {
     func testCloudTargetsNeverIncludeGitHubModels() {
         let keychain = everyAccountKeychain()
         let targets = HybridEscalator.cloudTargets(allowCloud: true, readKey: keychain.read)
-        XCTAssertEqual(targets.map(\.provider.id), ["cloud.anthropic", "cloud.openai"])
+        XCTAssertEqual(targets.map(\.provider.id), ["cloud.anthropic", "cloud.openai", "cloud.gemini"])
         XCTAssertFalse(keychain.requested.contains("cloud.github-models"))
+    }
+
+    func testCloudTargetsAddGeminiAfterOpenAIOnlyWithAKey() {
+        let withoutGemini = HybridEscalator.cloudTargets(
+            allowCloud: true, readKey: FakeKeychain(["cloud.openai": "kc-openai"]).read)
+        XCTAssertEqual(withoutGemini.map(\.provider.id), ["cloud.openai"])
+
+        let onlyGemini = HybridEscalator.cloudTargets(
+            allowCloud: true, geminiModel: "gemini-3.8-flash", readKey: FakeKeychain(["cloud.gemini": "kc-gemini"]).read)
+        XCTAssertEqual(onlyGemini.map(\.provider.id), ["cloud.gemini"])
+        XCTAssertEqual(onlyGemini.first?.modelID, "gemini-3.8-flash")
+        XCTAssertEqual(onlyGemini.first.flatMap { storedKey($0.provider) }, "kc-gemini")
     }
 
     @MainActor

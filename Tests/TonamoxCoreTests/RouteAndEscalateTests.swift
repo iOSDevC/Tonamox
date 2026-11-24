@@ -240,9 +240,33 @@ final class RouteAndEscalateTests: XCTestCase {
         XCTAssertLessThan(try XCTUnwrap(offer.payload).estimatedInputTokens, 921, "the payload alone would fit")
     }
 
-    func testCloudCallFailingAfterOutputIsRecordedWithUnknownCost() async throws {
+    func testPricedCloudCallFailingAfterOutputIsRecordedAtTheEstimatedUpperBound() async throws {
         let ledger = CostLedger()
         ledger.setPrice(TokenPrice(inputUSDPerMillion: 1, outputUSDPerMillion: 1), provider: "test.failing")
+        let target = RemoteTarget(provider: FailingRemoteProvider(emitsToken: true), modelID: "fake",
+                                  contextLength: 8192, origin: .cloud)
+        let escalator = HybridEscalator(ledger: ledger)
+        let payload = escalator.preparePayload(for: target, context: "", question: "unique \(UUID().uuidString)")
+        do {
+            _ = try await escalator.escalate(payload, to: target)
+            XCTFail("the provider fails mid-stream")
+        } catch is FailingRemoteProvider.StreamError {}
+
+        let entry = try XCTUnwrap(ledger.records.last)
+        XCTAssertNil(entry.usage)
+        XCTAssertTrue(entry.isEstimated)
+        XCTAssertEqual(entry.estimatedUsage,
+                       TokenUsage(inputTokens: payload.estimatedInputTokens, outputTokens: payload.maxTokens))
+        let expected = Decimal(payload.estimatedInputTokens + payload.maxTokens) / Decimal(1_000_000)
+        XCTAssertEqual(entry.costUSD, expected)
+        XCTAssertEqual(ledger.sessionCostUSD, expected)
+        XCTAssertEqual(ledger.unpricedRecordCount, 0)
+        XCTAssertEqual(ledger.estimatedRecordCount, 1)
+        XCTAssertEqual(ledger.sessionTokens, 0, "an estimate is not reported usage")
+    }
+
+    func testUnpricedCloudCallFailingAfterOutputStaysUnknown() async throws {
+        let ledger = CostLedger()
         let target = RemoteTarget(provider: FailingRemoteProvider(emitsToken: true), modelID: "fake",
                                   contextLength: 8192, origin: .cloud)
         do {
@@ -254,6 +278,7 @@ final class RouteAndEscalateTests: XCTestCase {
         XCTAssertNil(entry.usage)
         XCTAssertNil(entry.costUSD)
         XCTAssertEqual(ledger.unpricedRecordCount, 1)
+        XCTAssertEqual(ledger.estimatedRecordCount, 0)
     }
 
     func testCloudCallFailingAfterReasoningIsRecordedWithUnknownCost() async throws {

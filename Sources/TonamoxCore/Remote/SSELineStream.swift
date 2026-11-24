@@ -6,12 +6,12 @@ import Foundation
 enum SSELineStream {
 
     /// POST `request` and stream response lines. Throws ``TonamoxError/remoteFailed``
-    /// on a non-2xx status (with a snippet of the error body).
+    /// on a non-2xx status (with a snippet of the error body); a redirect is not followed and fails the same way.
     static func lines(for request: URLRequest, session: URLSession) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let (bytes, response) = try await session.bytes(for: request)
+                    let (bytes, response) = try await session.bytes(for: request, delegate: NoRedirectDelegate.shared)
                     guard let http = response as? HTTPURLResponse else {
                         throw TonamoxError.remoteFailed(-1, "No HTTP response")
                     }
@@ -44,5 +44,18 @@ enum SSELineStream {
         config.waitsForConnectivity = false
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: config)
+    }
+}
+
+/// Refuses every HTTP redirect, so a prompt goes only to the host the consent named: a server approved as
+/// local network cannot forward the body to the internet with a 307/308.
+final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+    static let shared = NoRedirectDelegate()
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest
+    ) async -> URLRequest? {
+        nil
     }
 }

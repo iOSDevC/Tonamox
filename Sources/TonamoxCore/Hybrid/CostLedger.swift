@@ -37,11 +37,18 @@ public final class CostLedger: ObservableObject {
         public let model: String?
         /// `true` for the user's own machine (always `$0`).
         public let isLocalNetwork: Bool
+        /// The usage the provider reported; nil when it reported none.
         public let usage: TokenUsage?
-        /// `nil` when unknown: a cloud call with no matching price or no reported usage.
+        /// A conservative estimate priced in place of `usage` when the provider reported none (a stream stopped
+        /// after output): the estimated input plus the request's `maxTokens`. Not counted in ``sessionTokens``.
+        public let estimatedUsage: TokenUsage?
+        /// `nil` when unknown: a cloud call with no matching price, or with neither usage nor estimate.
         public let costUSD: Decimal?
         /// compressed / original token ratio (nil when no compression ran).
         public let compressionRatio: Double?
+
+        /// `true` when `costUSD` was priced from `estimatedUsage`.
+        public var isEstimated: Bool { usage == nil && estimatedUsage != nil }
     }
 
     @Published public private(set) var records: [Record] = []
@@ -54,8 +61,8 @@ public final class CostLedger: ObservableObject {
         sessionRecords.reduce(0) { $0 + ($1.usage?.totalTokens ?? 0) }
     }
 
-    /// Spend of the priced records since the session started. A lower bound
-    /// while ``unpricedRecordCount`` is above zero.
+    /// Spend of the priced records since the session started, estimated ones included. A lower
+    /// bound while ``unpricedRecordCount`` is above zero.
     public var sessionCostUSD: Decimal {
         sessionRecords.reduce(Decimal(0)) { $0 + ($1.costUSD ?? 0) }
     }
@@ -68,23 +75,32 @@ public final class CostLedger: ObservableObject {
         sessionRecords.reduce(0) { $0 + ($1.costUSD == nil ? 1 : 0) }
     }
 
+    /// Records since the session started whose cost was priced from an estimate (``Record/isEstimated``).
+    public var estimatedRecordCount: Int {
+        sessionRecords.reduce(0) { $0 + ($1.isEstimated && $1.costUSD != nil ? 1 : 0) }
+    }
+
     /// Starts a new cost session: `records` keeps the history, while `sessionTokens`,
     /// `sessionCostUSD`, `unpricedRecordCount` and `sessionRecordCount` restart at zero.
     public func startNewSession() {
         sessionStart = records.count
     }
 
+    /// Appends a record. `estimatedUsage` is priced only when `usage` is nil, and the record is then flagged
+    /// ``Record/isEstimated``.
     public func record(
         provider: String,
         model: String? = nil,
         usage: TokenUsage?,
+        estimatedUsage: TokenUsage? = nil,
         origin: RemoteTarget.Origin,
         compressionRatio: Double?
     ) {
         let isLocal = if case .localNetwork = origin { true } else { false }
+        let estimate = usage == nil ? estimatedUsage : nil
         records.append(Record(
-            provider: provider, model: model, isLocalNetwork: isLocal, usage: usage,
-            costUSD: cost(provider: provider, model: model, usage: usage, origin: origin),
+            provider: provider, model: model, isLocalNetwork: isLocal, usage: usage, estimatedUsage: estimate,
+            costUSD: cost(provider: provider, model: model, usage: usage ?? estimate, origin: origin),
             compressionRatio: compressionRatio))
     }
 

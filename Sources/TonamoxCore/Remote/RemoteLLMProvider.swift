@@ -17,6 +17,31 @@ public protocol RemoteLLMProvider: Sendable {
     /// Stream a response as a sequence of ``RemoteEvent``s. Throws on transport
     /// or non-success HTTP status.
     func stream(_ request: RemoteRequest) -> AsyncThrowingStream<RemoteEvent, Error>
+    /// What ``ResponseCache`` keys answers on: ``id`` by default; the bundled providers add their endpoint, so a
+    /// provider id reused for another server never answers from the old server's replies. Never holds a secret.
+    var cacheIdentity: String { get }
+}
+
+extension RemoteLLMProvider {
+    public var cacheIdentity: String { id }
+}
+
+/// `scheme://host:port/path` of an endpoint, without user, password, query or fragment.
+enum EndpointIdentity {
+    static func of(_ url: URL) -> String {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return "?" }
+        let scheme = parts.scheme?.lowercased() ?? ""
+        let host = parts.percentEncodedHost?.lowercased() ?? ""
+        let port = parts.port ?? (scheme == "https" ? 443 : scheme == "http" ? 80 : 0)
+        var path = parts.percentEncodedPath
+        while path.hasSuffix("/") { path.removeLast() }
+        return "\(scheme)://\(host):\(port)\(path)"
+    }
+
+    /// `id` plus the endpoint, for ``RemoteLLMProvider/cacheIdentity``.
+    static func cacheIdentity(id: String, baseURL: URL) -> String {
+        "\(id)@\(of(baseURL))"
+    }
 }
 
 // MARK: - Wire types
@@ -108,6 +133,8 @@ extension RemoteTarget {
     public static let defaultOpenAIModel = "gpt-4o"
     /// Default model of the Anthropic target.
     public static let defaultAnthropicModel = "claude-sonnet-4-5"
+    /// Default model of the Gemini target.
+    public static let defaultGeminiModel = "gemini-3.5-flash-lite"
 
     /// Hosted OpenAI (`https://api.openai.com/v1`). Shared by
     /// `HybridEscalator.cloudTargets` and ``AskTargetResolver`` so they cannot drift.
@@ -125,10 +152,26 @@ extension RemoteTarget {
             provider: AnthropicProvider(apiKey: apiKey),
             modelID: model, contextLength: 200_000, origin: .cloud)
     }
+
+    /// Google's Gemini API through its OpenAI-compatible endpoint
+    /// (`https://generativelanguage.googleapis.com/v1beta/openai/`, Bearer key). Shared like
+    /// ``openAI(apiKey:model:)``. No `temperature` is sent: Google deprecated it on 2026-07-21. The context length is
+    /// left unknown and the model is unpriced, so the cost ledger reports it as unknown.
+    public static func gemini(apiKey: String, model: String) -> RemoteTarget {
+        var provider = OpenAICompatibleProvider(
+            id: CloudAccount.gemini, displayName: "Gemini (Google)",
+            baseURL: URL(string: "https://generativelanguage.googleapis.com/v1beta/openai/")!, apiKey: apiKey,
+            retentionNote: "Sent to Google's Gemini API. With a free-tier key Google may use prompts and responses "
+                + "to improve its products and human reviewers may read them: don't send sensitive, confidential or "
+                + "personal data. Apps offered in the EEA, the UK or Switzerland may use only paid keys.")
+        provider.sendsTemperature = false
+        return RemoteTarget(provider: provider, modelID: model, contextLength: nil, origin: .cloud)
+    }
 }
 
 /// Keychain accounts (service `dev.auralocal.remote`) holding the cloud API keys.
 enum CloudAccount {
     static let openAI = "cloud.openai"
     static let anthropic = "cloud.anthropic"
+    static let gemini = "cloud.gemini"
 }

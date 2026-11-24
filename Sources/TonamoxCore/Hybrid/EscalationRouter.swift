@@ -20,6 +20,28 @@ public enum RoutingDecision: Sendable, Equatable {
     case offer(reason: EscalationReason)
 }
 
+/// Why ``EscalationRouter/decideUserRequested(_:)`` refused a send the user asked for.
+public enum UserRequestRefusal: Sendable, Equatable {
+    /// The policy's mode is `.off`.
+    case policyOff
+    /// A cloud target while `allowCloud` is false.
+    case cloudNotAllowed
+    /// A cloud target with no network.
+    case offline
+    /// The priced request would take the session over `costCapUSDPerSession`.
+    case overCostCap
+}
+
+/// The verdict of ``EscalationRouter/decideUserRequested(_:)``.
+public enum UserRequestedDecision: Sendable, Equatable {
+    /// Do not send; nothing leaves the device.
+    case refuse(UserRequestRefusal)
+    /// Ask the user before sending.
+    case ask(reason: EscalationReason)
+    /// Send without asking (only a LAN target under `.autoWithConsentMemory`).
+    case send
+}
+
 /// Everything the router needs, gathered by the caller (I/O stays outside so the
 /// decision is a pure, unit-testable function).
 public struct RoutingInput: Sendable {
@@ -113,6 +135,42 @@ public enum EscalationRouter {
             return .offer(reason: .costCapped)          // certain even when unpriced calls hide more spend
         }
         return input.unpricedRecordCount > 0 ? .offer(reason: .costUnknown) : nil
+    }
+
+    // MARK: - User-requested sends
+
+    /// The verdict for a send the user asked for, to a target the user chose. Unlike ``decide(_:)`` no trigger
+    /// is needed and `allowCloud` is checked here, because a user-chosen target was never filtered by
+    /// `HybridEscalator.candidateTargets(policy:)`. `hasCandidateTarget`, `promptTokens`, `localContextWindow`,
+    /// `localAnswer` and `domain` are ignored. Rules, in order:
+    ///
+    /// 1. mode `.off` refuses; 2. a cloud target without `allowCloud` refuses; 3. a cloud target offline refuses;
+    /// 4. a priced request that would cross `costCapUSDPerSession` refuses (the cap is enforced, not offered);
+    /// 5. a cloud target that is unpriced, or a session with unpriced records, asks with `.costUnknown`;
+    /// 6. otherwise `.askEachTime` asks with `.userRequested`, and `.autoWithConsentMemory` asks for cloud and
+    ///    sends to the LAN.
+    public static func decideUserRequested(_ input: RoutingInput) -> UserRequestedDecision {
+        let policy = input.policy
+        guard policy.mode != .off else { return .refuse(.policyOff) }
+        if input.candidateIsCloud {
+            guard policy.allowCloud else { return .refuse(.cloudNotAllowed) }
+            guard input.online else { return .refuse(.offline) }
+        }
+        if let projected = input.projectedCostUSD, projected > 0,
+           input.sessionSpentUSD + projected > policy.costCapUSDPerSession {
+            return .refuse(.overCostCap)
+        }
+        if input.candidateIsCloud && (input.projectedCostUSD == nil || input.unpricedRecordCount > 0) {
+            return .ask(reason: .costUnknown)
+        }
+        switch policy.mode {
+        case .off:
+            return .refuse(.policyOff)   // unreachable (rule 1)
+        case .askEachTime:
+            return .ask(reason: .userRequested)
+        case .autoWithConsentMemory:
+            return input.candidateIsCloud ? .ask(reason: .userRequested) : .send
+        }
     }
 
     // MARK: - Heuristics

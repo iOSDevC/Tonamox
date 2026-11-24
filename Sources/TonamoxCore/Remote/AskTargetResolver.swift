@@ -4,7 +4,7 @@ import Foundation
 /// explicit inputs only: no network and no Keychain access of its own.
 ///
 /// `.auto` and `.local` never pick a cloud provider. A prompt leaves the machine
-/// only when the caller names `.openAI` / `.anthropic` or passes a base URL.
+/// only when the caller names `.openAI` / `.anthropic` / `.gemini` or passes a base URL.
 public enum AskTargetResolver {
 
     /// The provider a caller asks for.
@@ -17,6 +17,8 @@ public enum AskTargetResolver {
         case openAI = "openai"
         /// Anthropic; key from `ANTHROPIC_API_KEY`, else the Keychain `cloud.anthropic`.
         case anthropic
+        /// Google Gemini; key from `GOOGLE_API_KEY`, else `GEMINI_API_KEY`, else the Keychain `cloud.gemini`.
+        case gemini
     }
 
     /// Why no target could be chosen. `errorDescription` says what to do next.
@@ -25,7 +27,8 @@ public enum AskTargetResolver {
         case noLocalProvider
         /// No running local provider serves `model` on its machine; `available` lists what they do serve.
         case modelNotServedLocally(model: String, available: [String])
-        /// A named cloud provider has no key in the environment or the Keychain.
+        /// A named cloud provider has no key in the environment or the Keychain. `environmentVariable` names every
+        /// variable read, joined by " or " (Gemini: `GOOGLE_API_KEY or GEMINI_API_KEY`).
         case missingAPIKey(provider: Choice, environmentVariable: String, keychainAccount: String)
         /// A base URL was combined with a cloud provider, or `.local` with a public host.
         case conflictingOptions(String)
@@ -49,7 +52,7 @@ public enum AskTargetResolver {
                 No local model server with an on-machine model is running (Ollama cloud models don't count). Either:
                   - start llama-server (http://127.0.0.1:8080/v1), Ollama (http://localhost:11434)
                     or Magnitude (http://127.0.0.1:10100/inference/v1) with a model loaded,
-                  - pass --provider openai or --provider anthropic to send the prompt to that cloud API, or
+                  - pass --provider openai, anthropic or gemini to send the prompt to that cloud API, or
                   - pass --base-url <url> --model <id> for another OpenAI-compatible server.
                 """
             case .modelNotServedLocally(let model, let available):
@@ -96,13 +99,18 @@ public enum AskTargetResolver {
         case .auto, .local:
             return try localTarget(model: model, localProviders: localProviders)
         case .openAI:
-            let key = try apiKey(for: choice, variable: "OPENAI_API_KEY", account: CloudAccount.openAI,
+            let key = try apiKey(for: choice, variables: ["OPENAI_API_KEY"], account: CloudAccount.openAI,
                                  environment: environment, readKey: readKey)
             return .openAI(apiKey: key, model: model ?? RemoteTarget.defaultOpenAIModel)
         case .anthropic:
-            let key = try apiKey(for: choice, variable: "ANTHROPIC_API_KEY", account: CloudAccount.anthropic,
+            let key = try apiKey(for: choice, variables: ["ANTHROPIC_API_KEY"], account: CloudAccount.anthropic,
                                  environment: environment, readKey: readKey)
             return .anthropic(apiKey: key, model: model ?? RemoteTarget.defaultAnthropicModel)
+        case .gemini:
+            // GOOGLE_API_KEY first, as Google's own SDKs do when both are set.
+            let key = try apiKey(for: choice, variables: ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+                                 account: CloudAccount.gemini, environment: environment, readKey: readKey)
+            return .gemini(apiKey: key, model: model ?? RemoteTarget.defaultGeminiModel)
         }
     }
 
@@ -142,12 +150,15 @@ public enum AskTargetResolver {
 
     // MARK: - Cloud
 
+    /// The first non-empty of `variables`, else the Keychain `account`.
     private static func apiKey(
-        for choice: Choice, variable: String, account: String,
+        for choice: Choice, variables: [String], account: String,
         environment: [String: String], readKey: (String) -> String?
     ) throws(Failure) -> String {
-        guard let key = nonEmpty(environment[variable]) ?? nonEmpty(readKey(account)) else {
-            throw .missingAPIKey(provider: choice, environmentVariable: variable, keychainAccount: account)
+        let fromEnvironment = variables.lazy.compactMap { nonEmpty(environment[$0]) }.first
+        guard let key = fromEnvironment ?? nonEmpty(readKey(account)) else {
+            throw .missingAPIKey(
+                provider: choice, environmentVariable: variables.joined(separator: " or "), keychainAccount: account)
         }
         return key
     }
@@ -157,7 +168,7 @@ public enum AskTargetResolver {
     private static func customTarget(
         _ choice: Choice, baseURL: String, model: String?, environment: [String: String]
     ) throws(Failure) -> RemoteTarget {
-        if choice == .openAI || choice == .anthropic {
+        if choice == .openAI || choice == .anthropic || choice == .gemini {
             throw .conflictingOptions(
                 "--base-url and --provider \(choice.rawValue) are mutually exclusive: "
                     + "--base-url already names the server.")

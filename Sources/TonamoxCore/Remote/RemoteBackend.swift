@@ -14,7 +14,10 @@ final class RemoteBackend: InferenceBackend {
     /// True once the last generation produced text or reasoning, so a failure after it still cost tokens.
     private(set) var didReceiveOutput = false
 
-    init(target: RemoteTarget, temperature: Float = 0.7) {
+    /// What remote generation samples at when the caller passes no temperature.
+    nonisolated static let defaultTemperature: Float = 0.7
+
+    init(target: RemoteTarget, temperature: Float = RemoteBackend.defaultTemperature) {
         self.target = target
         self.temperature = temperature
     }

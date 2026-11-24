@@ -17,8 +17,10 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
     private let baseURL: URL
     private let apiKey: String?
     private let streaming: Bool
-    /// The streaming path's session; tests swap in one with a stub `URLProtocol`.
+    /// The session of both paths (refusing redirects per task); tests swap in one with a stub `URLProtocol`.
     var makeSession: @Sendable () -> URLSession = { SSELineStream.makeSession() }
+    /// `false` leaves `temperature` out of the body, for servers that deprecated it (Gemini).
+    var sendsTemperature = true
 
     public init(
         id: String,
@@ -54,6 +56,9 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
         fatalError("GitHub retired GitHub Models on 2026-07-30. Use a local llama-server/Ollama (OpenAICompatibleProvider.from(_:)), OpenAI, Anthropic, or OpenAICompatibleProvider(id:displayName:baseURL:apiKey:).")
     }
 
+    /// ``id`` plus `baseURL`'s scheme, host, port and path; the API key is never part of it.
+    public var cacheIdentity: String { EndpointIdentity.cacheIdentity(id: id, baseURL: baseURL) }
+
     public func stream(_ request: RemoteRequest) -> AsyncThrowingStream<RemoteEvent, Error> {
         streaming ? streamSSE(request) : sendOnce(request)
     }
@@ -68,7 +73,14 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
                     defer { session.invalidateAndCancel() }
                     for try await line in SSELineStream.lines(for: urlRequest, session: session) {
                         if Task.isCancelled { break }
-                        for event in Self.parse(line: line) {
+                        guard let chunk = Self.chunk(from: line) else { continue }
+                        // An error event after a 200 (Gemini's quota, rate-limit or safety stop) must fail the
+                        // stream, or the partial answer is cached and recorded as a completed call.
+                        if let failure = chunk.error {
+                            let message = String((failure.message ?? "").prefix(600))
+                            throw TonamoxError.remoteFailed(failure.code ?? -1, message)
+                        }
+                        for event in Self.events(from: chunk) {
                             continuation.yield(event)
                         }
                     }
@@ -89,7 +101,9 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
             let task = Task {
                 do {
                     let urlRequest = try makeRequest(request)
-                    let (data, response) = try await URLSession.shared.data(for: urlRequest)
+                    let session = makeSession()
+                    defer { session.invalidateAndCancel() }
+                    let (data, response) = try await session.data(for: urlRequest, delegate: NoRedirectDelegate.shared)
                     guard let http = response as? HTTPURLResponse else {
                         throw TonamoxError.remoteFailed(-1, "No HTTP response")
                     }
@@ -128,9 +142,11 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
             "model": req.model,
             "messages": messages,
             "max_tokens": req.maxTokens,
-            "temperature": req.temperature,
             "stream": streaming,
         ]
+        if sendsTemperature {
+            body["temperature"] = req.temperature
+        }
         if streaming {
             body["stream_options"] = ["include_usage": true]
         }
@@ -148,11 +164,17 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
     // MARK: - SSE parsing (OpenAI dialect)
 
     static func parse(line: String) -> [RemoteEvent] {
-        guard line.hasPrefix("data:") else { return [] }
+        chunk(from: line).map(events(from:)) ?? []
+    }
+
+    private static func chunk(from line: String) -> Chunk? {
+        guard line.hasPrefix("data:") else { return nil }
         let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
-        guard !payload.isEmpty, payload != "[DONE]" else { return [] }
-        guard let data = payload.data(using: .utf8),
-              let chunk = try? JSONDecoder().decode(Chunk.self, from: data) else { return [] }
+        guard !payload.isEmpty, payload != "[DONE]", let data = payload.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(Chunk.self, from: data)
+    }
+
+    private static func events(from chunk: Chunk) -> [RemoteEvent] {
         var events: [RemoteEvent] = []
         let delta = chunk.choices?.first?.delta
         if let reasoning = delta?.reasoning_content ?? delta?.reasoning, !reasoning.isEmpty {
@@ -181,14 +203,35 @@ public struct OpenAICompatibleProvider: RemoteLLMProvider {
                 let reasoning_content: String?
                 let reasoning: String?
             }
-            let delta: Delta
+            /// Optional: a finishing chunk may carry only `finish_reason` and usage, which must not be dropped.
+            let delta: Delta?
         }
         struct Usage: Decodable {
             let prompt_tokens: Int?
             let completion_tokens: Int?
         }
+        /// `{"error":{"code","message"}}`; some servers send the message as a bare string.
+        struct StreamError: Decodable {
+            let code: Int?
+            let message: String?
+
+            private enum CodingKeys: String, CodingKey { case code, message }
+
+            init(from decoder: any Decoder) throws {
+                if let text = try? decoder.singleValueContainer().decode(String.self) {
+                    code = nil
+                    message = text
+                    return
+                }
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                // OpenAI's `code` is a string such as "rate_limit_exceeded"; only Gemini's numeric one is kept.
+                code = try? container.decodeIfPresent(Int.self, forKey: .code)
+                message = try? container.decodeIfPresent(String.self, forKey: .message)
+            }
+        }
         let choices: [Choice]?
         let usage: Usage?
+        let error: StreamError?
     }
 
     // MARK: - Non-streaming response (OpenAI dialect)

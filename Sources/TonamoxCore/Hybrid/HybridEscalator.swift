@@ -58,7 +58,8 @@ public final class HybridEscalator {
 
     /// Escalate to `target`: optionally redact, compress `context` to half the remote's
     /// context window minus `maxTokens`, send system + context + question, stream the
-    /// answer, and record cost. Checks no policy, consent or cost cap.
+    /// answer, and record cost. Checks no policy, consent or cost cap. `temperature` as in
+    /// ``escalate(_:to:temperature:onToken:)``.
     public func escalate(
         to target: RemoteTarget,
         systemPrompt: String? = nil,
@@ -66,18 +67,19 @@ public final class HybridEscalator {
         question: String,
         maxTokens: Int = 1024,
         redactPII: Bool = false,
+        temperature: Float? = nil,
         onToken: @escaping @MainActor (String) -> Void = { _ in }
     ) async throws -> Result {
         let payload = preparePayload(
             for: target, systemPrompt: systemPrompt, context: context, question: question,
             maxTokens: maxTokens, keepRatio: 0.5, redactPII: redactPII)
-        return try await escalate(payload, to: target, onToken: onToken)
+        return try await escalate(payload, to: target, temperature: temperature, onToken: onToken)
     }
 
     /// Build the exact request an escalation to `target` sends, without sending it:
     /// with `redactPII`, the context and `question` are redacted, then the context is
     /// compressed to `keepRatio` of the remote's context window minus `maxTokens` (at
-    /// least 256 tokens). Show it for consent, then pass it to ``escalate(_:to:onToken:)``.
+    /// least 256 tokens). Show it for consent, then pass it to ``escalate(_:to:temperature:onToken:)``.
     public func preparePayload(
         for target: RemoteTarget,
         systemPrompt: String? = nil,
@@ -113,18 +115,28 @@ public final class HybridEscalator {
     }
 
     /// Send `payload` to `target` exactly as built (no recompression or redaction),
-    /// stream the answer, and record cost. An earlier request with the same provider,
-    /// model, messages and `maxTokens` is answered from ``ResponseCache`` without a remote call.
-    /// An empty or whitespace-only answer (e.g. a reasoning model that spent `maxTokens` thinking) is
-    /// returned but not cached, so asking again calls the remote again.
+    /// stream the answer, and record cost. An earlier request with the same provider
+    /// (``RemoteLLMProvider/cacheIdentity``), model, messages, `maxTokens` and temperature is answered from
+    /// ``ResponseCache`` without a remote call. An empty or whitespace-only answer (e.g. a reasoning model that
+    /// spent `maxTokens` thinking) is returned but not cached, so asking again calls the remote again.
+    ///
+    /// `temperature` is sent as the request's sampling temperature; nil sends 0.7, as before it existed.
+    /// A stream that stops after output without a usage event (a cancel, a dropped connection) is recorded at
+    /// the estimated input plus `maxTokens`, flagged ``CostLedger/Record/isEstimated``.
     public func escalate(
         _ payload: EscalationPayload,
         to target: RemoteTarget,
+        temperature: Float? = nil,
         onToken: @escaping @MainActor (String) -> Void = { _ in }
     ) async throws -> Result {
         let compressed = payload.compression
+        // An explicit default keys like nil, so passing 0.7 does not split the cache; nor does any temperature a
+        // provider never sends (Gemini), since those requests are byte-identical.
+        let omitsTemperature = (target.provider as? OpenAICompatibleProvider)?.sendsTemperature == false
+        let keyTemperature = omitsTemperature || temperature == RemoteBackend.defaultTemperature ? nil : temperature
+        let cacheProvider = target.provider.cacheIdentity
         if let cached = ResponseCache.shared.lookup(
-            provider: target.provider.id, model: target.modelID, payload: payload) {
+            provider: cacheProvider, model: target.modelID, payload: payload, temperature: keyTemperature) {
             onToken(cached)
             return Result(
                 answer: cached, compression: compressed, usage: nil,
@@ -132,23 +144,28 @@ public final class HybridEscalator {
                 redactedPIICount: payload.redactedPIICount, fromCache: true)
         }
 
-        let backend = RemoteBackend(target: target)
+        let backend = RemoteBackend(target: target, temperature: temperature ?? RemoteBackend.defaultTemperature)
         let answer: String
         do {
             answer = try await backend.generate(
                 prompt: payload.userMessage, systemPrompt: payload.systemPrompt,
                 maxTokens: payload.maxTokens, onToken: onToken)
+            // A cancelled consumer ends the stream quietly; its partial answer must be neither cached nor unpriced.
+            try Task.checkCancellation()
         } catch {
-            // Output means tokens were billed; without usage the record's cost is unknown, never $0.
-            if backend.didReceiveOutput || backend.lastUsage != nil {
-                record(target, usage: backend.lastUsage, compression: compressed)
+            if let usage = backend.lastUsage {
+                record(target, usage: usage, compression: compressed)
+            } else if backend.didReceiveOutput {
+                // Output means tokens were billed; the estimate keeps the cost cap from under-counting.
+                record(target, usage: nil, compression: compressed, estimatedUsage: TokenUsage(
+                    inputTokens: payload.estimatedInputTokens, outputTokens: payload.maxTokens))
             }
             throw error
         }
 
         if !answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             ResponseCache.shared.insert(
-                answer, provider: target.provider.id, model: target.modelID, payload: payload)
+                answer, provider: cacheProvider, model: target.modelID, payload: payload, temperature: keyTemperature)
         }
         record(target, usage: backend.lastUsage, compression: compressed)
 
@@ -161,12 +178,16 @@ public final class HybridEscalator {
             fromCache: false)
     }
 
-    private func record(_ target: RemoteTarget, usage: TokenUsage?, compression: CompressionResult) {
+    private func record(
+        _ target: RemoteTarget, usage: TokenUsage?, compression: CompressionResult,
+        estimatedUsage: TokenUsage? = nil
+    ) {
         let didCompress = compression.originalTokens > compression.compressedTokens
         ledger.record(
             provider: target.provider.id,
             model: target.modelID,
             usage: usage,
+            estimatedUsage: estimatedUsage,
             origin: target.origin,
             compressionRatio: didCompress ? compression.ratio : nil)
     }
@@ -174,22 +195,25 @@ public final class HybridEscalator {
     // MARK: - Cloud targets (Phase 2)
 
     /// Build cloud escalation targets from Keychain-stored API keys (BYOK):
-    /// `cloud.anthropic`, then `cloud.openai`.
+    /// `cloud.anthropic`, then `cloud.openai`, then `cloud.gemini`. Gemini is unpriced, so the router offers it with
+    /// a cost-unknown consent prompt.
     public static func cloudTargets(
         allowCloud: Bool,
         anthropicModel: String = RemoteTarget.defaultAnthropicModel,
-        openAIModel: String = RemoteTarget.defaultOpenAIModel
+        openAIModel: String = RemoteTarget.defaultOpenAIModel,
+        geminiModel: String = RemoteTarget.defaultGeminiModel
     ) -> [RemoteTarget] {
         cloudTargets(
             allowCloud: allowCloud, anthropicModel: anthropicModel, openAIModel: openAIModel,
-            readKey: KeychainStore.read(for:))
+            geminiModel: geminiModel, readKey: KeychainStore.read(for:))
     }
 
-    /// ``cloudTargets(allowCloud:anthropicModel:openAIModel:)`` with an injected key reader.
+    /// ``cloudTargets(allowCloud:anthropicModel:openAIModel:geminiModel:)`` with an injected key reader.
     nonisolated static func cloudTargets(
         allowCloud: Bool,
         anthropicModel: String = RemoteTarget.defaultAnthropicModel,
         openAIModel: String = RemoteTarget.defaultOpenAIModel,
+        geminiModel: String = RemoteTarget.defaultGeminiModel,
         readKey: (String) -> String?
     ) -> [RemoteTarget] {
         guard allowCloud else { return [] }
@@ -200,12 +224,15 @@ public final class HybridEscalator {
         if let key = readKey(CloudAccount.openAI) {
             targets.append(.openAI(apiKey: key, model: openAIModel))
         }
+        if let key = readKey(CloudAccount.gemini) {
+            targets.append(.gemini(apiKey: key, model: geminiModel))
+        }
         return targets
     }
 
     /// Retired: GitHub shut down GitHub Models on 2026-07-30. A key still stored
     /// under `cloud.github-models` is no longer read.
-    @available(*, unavailable, message: "GitHub retired GitHub Models on 2026-07-30. Drop gitHubModelsModel and call cloudTargets(allowCloud:anthropicModel:openAIModel:), or use a local llama-server/Ollama or OpenAICompatibleProvider(id:displayName:baseURL:apiKey:).")
+    @available(*, unavailable, message: "GitHub retired GitHub Models on 2026-07-30. Drop gitHubModelsModel and call cloudTargets(allowCloud:anthropicModel:openAIModel:geminiModel:), or use a local llama-server/Ollama or OpenAICompatibleProvider(id:displayName:baseURL:apiKey:).")
     public static func cloudTargets(
         allowCloud: Bool,
         anthropicModel: String = RemoteTarget.defaultAnthropicModel,
@@ -250,6 +277,7 @@ public final class HybridEscalator {
         consent: any ConsentGate = DenyingConsentGate(),
         maxTokens: Int = 1024,
         targets: [RemoteTarget]? = nil,
+        temperature: Float? = nil,
         onToken: @escaping @MainActor (String) -> Void = { _ in }
     ) async throws -> Result? {
         let candidates: [RemoteTarget]
@@ -289,7 +317,7 @@ public final class HybridEscalator {
                 throw TonamoxError.escalationDeclined
             }
         }
-        return try await escalate(payload, to: target, onToken: onToken)
+        return try await escalate(payload, to: target, temperature: temperature, onToken: onToken)
     }
 
     /// The router's view of one request, priced by this escalator's ledger and
@@ -317,6 +345,7 @@ public final class HybridEscalator {
             projectedCostUSD: ledger.projectedCost(
                 target: target, inputTokens: pricedInputTokens ?? promptTokens, maxOutput: maxTokens),
             sessionSpentUSD: ledger.sessionCostUSD,
-            unpricedRecordCount: ledger.unpricedRecordCount)
+            // An estimate's input side is chars/4, not a bound, so it still asks like an unpriced record.
+            unpricedRecordCount: ledger.unpricedRecordCount + ledger.estimatedRecordCount)
     }
 }

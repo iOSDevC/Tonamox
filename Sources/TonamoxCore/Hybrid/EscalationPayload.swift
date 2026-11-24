@@ -1,7 +1,7 @@
 import Foundation
 
 /// The exact request an escalation sends: built once by ``HybridEscalator/preparePayload(for:systemPrompt:context:question:maxTokens:keepRatio:redactPII:)``,
-/// shown to the ``ConsentGate`` and then sent unchanged by ``HybridEscalator/escalate(_:to:onToken:)``.
+/// shown to the ``ConsentGate`` and then sent unchanged by ``HybridEscalator/escalate(_:to:temperature:onToken:)``.
 public struct EscalationPayload: Sendable, Equatable {
     /// Sent as the system message, verbatim: never compressed or redacted.
     public let systemPrompt: String?

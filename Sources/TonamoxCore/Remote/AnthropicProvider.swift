@@ -23,6 +23,9 @@ public struct AnthropicProvider: RemoteLLMProvider {
         self.version = version
     }
 
+    /// ``id`` plus `baseURL`'s scheme, host, port and path; the API key is never part of it.
+    public var cacheIdentity: String { EndpointIdentity.cacheIdentity(id: id, baseURL: baseURL) }
+
     public func stream(_ request: RemoteRequest) -> AsyncThrowingStream<RemoteEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -71,8 +74,9 @@ public struct AnthropicProvider: RemoteLLMProvider {
             "max_tokens": req.maxTokens,
             "messages": messages,
             "stream": true,
-            "temperature": req.temperature,
         ]
+        // Current Claude models (5.5 family and later) reject sampling parameters with a 400.
+        if Self.acceptsTemperature(req.model) { body["temperature"] = req.temperature }
         if let system = req.system { body["system"] = system }
 
         var r = URLRequest(url: baseURL.appending(path: "v1/messages"))
@@ -83,6 +87,11 @@ public struct AnthropicProvider: RemoteLLMProvider {
         r.setValue(version, forHTTPHeaderField: "anthropic-version")
         r.httpBody = try JSONSerialization.data(withJSONObject: body)
         return r
+    }
+
+    static func acceptsTemperature(_ model: String) -> Bool {
+        !["claude-opus-5", "claude-sonnet-5", "claude-haiku-5", "claude-fable-5", "claude-mythos-5"]
+            .contains { model.hasPrefix($0) }
     }
 
     /// Both counts or nothing: a missing count is unknown, and pricing it as 0 would undercount the call.
