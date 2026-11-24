@@ -108,15 +108,15 @@ final class LFM3ReasoningLiveTests: XCTestCase {
     private static let shellOutput = """
         <<<SALIDA-1a2b3c4d
         total 1688
-        drwxr-xr-x  12 cristopher  staff     384 19 nov 10:02 .
-        drwxr-xr-x+ 48 cristopher  staff    1536 18 nov 22:41 ..
-        -rw-r--r--@  1 cristopher  staff   10244 19 nov 09:58 .DS_Store
-        -rwxr-xr-x   1 cristopher  staff    2201 12 nov 17:30 init.sh
-        -rw-r--r--   1 cristopher  staff  812345 19 nov 10:01 build-2026-11-19T10:01:22Z.log
+        drwxr-xr-x  12 devuser     staff     384 19 nov 10:02 .
+        drwxr-xr-x+ 48 devuser     staff    1536 18 nov 22:41 ..
+        -rw-r--r--@  1 devuser     staff   10244 19 nov 09:58 .DS_Store
+        -rwxr-xr-x   1 devuser     staff    2201 12 nov 17:30 init.sh
+        -rw-r--r--   1 devuser     staff  812345 19 nov 10:01 build-2026-11-19T10:01:22Z.log
         PID   TTY           TIME CMD
         61234 ttys001    0:00.21 -zsh
         61302 ttys001    0:12.87 swift-build --configuration debug -j 10
-        error: /Users/cristopher/Developer/x/Sources/A/B.swift:42:17: cannot find 'fooBar' in scope
+        error: /Users/devuser/Developer/x/Sources/A/B.swift:42:17: cannot find 'fooBar' in scope
         SALIDA-1a2b3c4d>>>
         """
 
