@@ -17,3 +17,5 @@ Sources/AuraExample/build/
 build/
 
 Examples/ModelFinder/ModelFinder.xcodeproj/project.xcworkspace/xcuserdata/
+
+graphify-out/

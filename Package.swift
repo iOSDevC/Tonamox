@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Tonamox",
+    defaultLocalization: "en",
     platforms: [
         .iOS(.v18),
         .macOS(.v15),
@@ -16,6 +17,7 @@ let package = Package(
         .library(name: "TonamoxAppleIntelligence", targets: ["TonamoxAppleIntelligence"]),
         .library(name: "TonamoxAgents",            targets: ["TonamoxAgents"]),
         .library(name: "TonamoxImageGen",          targets: ["TonamoxImageGen"]),
+        .library(name: "TonamoxServer",            targets: ["TonamoxServer"]),
         .executable(name: "tonamox", targets: ["tonamox"]),
     ],
     dependencies: [
@@ -29,10 +31,12 @@ let package = Package(
         // 3.31.3. A branch pin cannot backtrack, so every resolve without our lockfile
         // failed — which is what downstream integrators got, since SwiftPM honours only
         // the ROOT package's Package.resolved.
-        .package(
-            url: "https://github.com/tattn/LocalLLMClient.git",
-            revision: "edc39ef2ffc1cef9cf856b0788de8d331f776c2e"   // tag 0.5.0
-        ),
+        //
+        // LOCAL ONLY: the sibling fork moves llama.cpp to b12407 (LFM3). Before any commit it must become a
+        // published fork pinned by `revision:` with a hosted xcframework (owner approval). Upstream pin was
+        // url: "https://github.com/tattn/LocalLLMClient.git", revision: "edc39ef2ffc1cef9cf856b0788de8d331f776c2e".
+        // A path package's identity is its folder name, hence `package: "LocalLLMClient-tonamox"` below.
+        .package(path: "../LocalLLMClient-tonamox"),
 
         // MLX (Apple Silicon). Both are ALREADY in the resolve — LocalLLMClient pulls them
         // in itself — so declaring them adds zero packages; it only lets TonamoxCore link what
@@ -58,8 +62,8 @@ let package = Package(
         .target(
             name: "TonamoxCore",
             dependencies: [
-                .product(name: "LocalLLMClient",      package: "LocalLLMClient"),
-                .product(name: "LocalLLMClientLlama", package: "LocalLLMClient"),
+                .product(name: "LocalLLMClient",      package: "LocalLLMClient-tonamox"),
+                .product(name: "LocalLLMClientLlama", package: "LocalLLMClient-tonamox"),
                 // Lights up MLXBackend.swift + the 32 MLX catalog entries, both of which
                 // sit behind `#if canImport(MLXLLM)` and were dark while these were absent.
                 .product(name: "MLXLLM",      package: "mlx-swift-lm"),
@@ -88,6 +92,7 @@ let package = Package(
                 "TonamoxVoice",
             ],
             path: "Sources/TonamoxUI",
+            resources: [.process("Localizable.xcstrings")],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
 
@@ -108,7 +113,7 @@ let package = Package(
         ),
 
         // MARK: - Apple Intelligence Agents
-        // Requires iOS 26+ / macOS 26+ with Apple Intelligence enabled.
+        // Requires iOS 27 / macOS 27 / visionOS 27 with Apple Intelligence enabled.
         // No dependency on TonamoxCore — standalone module using FoundationModels.
             .target(
                 name: "TonamoxAppleIntelligence",
@@ -121,7 +126,7 @@ let package = Package(
 
         // MARK: - Agents (multi-agent orchestration)
         // Reusable agent pipeline (AgentCrew) on FoundationModels + per-step hybrid
-        // escalation. Sits above the base modules; gated to iOS 26 / macOS 26 in-code.
+        // escalation. Sits above the base modules; gated to iOS 27 / macOS 27 / visionOS 27 in-code.
         .target(
             name: "TonamoxAgents",
             dependencies: ["TonamoxCore", "TonamoxAppleIntelligence", "TonamoxDocs"],
@@ -145,6 +150,23 @@ let package = Package(
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
 
+        // MARK: - Local server
+        // Foreground-only local HTTP server (OpenAI-compatible API and browser page on 127.0.0.1). TonamoxHTTP is
+        // internal: a strict HTTP/1.1 subset on Network.framework, no Cxx, no package dependency.
+        .target(
+            name: "TonamoxHTTP",
+            dependencies: [],
+            path: "Sources/TonamoxHTTP"
+        ),
+        .target(
+            name: "TonamoxServer",
+            dependencies: ["TonamoxHTTP", "TonamoxCore"],
+            path: "Sources/TonamoxServer",
+            resources: [.embedInCode("Embedded/tnx-run.sh"), .embedInCode("Embedded/index.html"),
+                        .embedInCode("Embedded/app.js"), .embedInCode("Embedded/app.css")],
+            swiftSettings: [.interoperabilityMode(.Cxx)]
+        ),
+
         // MARK: - Recibo spike (not a product)
         // The deterministic half of the Recibo spike: the rule-based baseline, the prompt, the OCR anchors and the
         // scoring that `tonamox receipt` drives. Recibo itself lives in its own repository.
@@ -161,15 +183,15 @@ let package = Package(
         // Cxx interop is required because it links TonamoxCore (llama.cpp).
         .executableTarget(
             name: "tonamox",
-            dependencies: ["TonamoxCore", "TonamoxImageGen", "ReceiptSpike"],
+            dependencies: ["TonamoxCore", "TonamoxImageGen", "ReceiptSpike", "TonamoxServer"],
             path: "Sources/tonamox",
             swiftSettings: [.interoperabilityMode(.Cxx)]
         ),
 
         // MARK: - Example App
         // TonamoxExample is a macOS/iOS app (built via Sources/TonamoxExample/TonamoxExample.xcodeproj),
-        // not a library product. It requires macOS 26 (AgentCrew) and is intentionally NOT a
-        // SwiftPM target here, so `swift build`/`swift test` stay green on the macOS-15 package.
+        // not a library product. It requires macOS 26.2 (its Agents tab, AgentCrew, needs macOS 27) and is
+        // intentionally NOT a SwiftPM target here, so `swift build`/`swift test` stay green on the macOS-15 package.
 
         // MARK: - Tests
         .testTarget(
@@ -194,6 +216,29 @@ let package = Package(
             name: "TonamoxImageGenTests",
             dependencies: ["TonamoxImageGen"],
             path: "Tests/TonamoxImageGenTests",
+            resources: [.copy("Fixtures")],
+            swiftSettings: [.interoperabilityMode(.Cxx)]
+        ),
+        .testTarget(
+            name: "TonamoxHTTPTests",
+            dependencies: ["TonamoxHTTP"],
+            path: "Tests/TonamoxHTTPTests"
+        ),
+        .testTarget(
+            name: "TonamoxAppleIntelligenceTests",
+            dependencies: ["TonamoxAppleIntelligence"],
+            path: "Tests/TonamoxAppleIntelligenceTests"
+        ),
+        .testTarget(
+            name: "TonamoxAgentsTests",
+            dependencies: ["TonamoxAgents", "TonamoxDocs", "TonamoxCore"],
+            path: "Tests/TonamoxAgentsTests",
+            swiftSettings: [.interoperabilityMode(.Cxx)]
+        ),
+        .testTarget(
+            name: "TonamoxServerTests",
+            dependencies: ["TonamoxServer", "TonamoxHTTP", "TonamoxCore"],
+            path: "Tests/TonamoxServerTests",
             resources: [.copy("Fixtures")],
             swiftSettings: [.interoperabilityMode(.Cxx)]
         )

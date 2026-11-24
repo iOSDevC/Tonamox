@@ -9,11 +9,11 @@
 # llama.cpp: `LLM_ARCH_NAMES` of the build LocalLLMClient pins (`llamaVersion` in its Package.swift),
 #      minus `clip` (a projector placeholder) and `(unknown)`.
 #
-# Usage: scripts/regen_pinned_runtimes.sh [llama.cpp build, default b8851]
+# Usage: scripts/regen_pinned_runtimes.sh [llama.cpp build, default b12407]
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-build="${1:-b8851}"
+build="${1:-b12407}"
 checkout=".build/checkouts/mlx-swift-lm/Libraries"
 
 registry_keys() {

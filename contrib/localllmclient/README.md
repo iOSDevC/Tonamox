@@ -217,6 +217,13 @@ Until LocalLLMClient bumps `llamaVersion` to b9180 or later, that whole family i
 `swift15_qwen38_27b_mlx` in `models.json`. Standalone llama.cpp and LM Studio at a current build run
 the GGUFs today; TONAMOX cannot, and forking to fix it is ruled out above.
 
+**Update 2026-11-19.** The maintainer approved a local fork for testing LFM3 (first in b11938):
+`../LocalLLMClient-tonamox` is 0.5.0 rebuilt on llama.cpp b12407 (e574a17b) with a locally built
+xcframework, and the root `Package.swift` points at it with `.package(path:)`. It is not published, so the
+branch cannot be committed as is; see `docs/exec-plans/active/2026-11-19-llamacpp-b12407.md`. b12407
+flags the qwen35 NextN layers non-recurrent (src/models/qwen35.cpp), so `gguf.qwen35-nextn` was retired;
+no MTP GGUF was loaded to confirm it.
+
 ### MLX conversions of that family: check the weight prefix first
 
 `mlx-swift-lm`'s `qwen3_5` expects the vision tower under `vision_tower.*` and drops
