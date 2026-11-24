@@ -22,6 +22,7 @@ struct TonamoxCLI {
             case "models":           try await runModels(rest)
             case "receipt":          try await runReceipt(rest)
             case "bench":            try await runBench(rest)
+            case "serve":            try await runServe(rest)
             case "help", "-h", "--help": printUsage()
             default:
                 err("Unknown command: \(command)\n")
@@ -79,7 +80,7 @@ struct TonamoxCLI {
     static let askValueFlags: Set<String> = ["--provider", "--model", "--base-url", "--max-tokens"]
 
     static let askUsage = """
-        usage: tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
+        usage: tonamox ask "<prompt>" [--provider auto|local|openai|anthropic|gemini] [--model <id>]
                                    [--base-url <url>] [--max-tokens N]
 
         """
@@ -140,6 +141,8 @@ struct TonamoxCLI {
             exit(error.isUsageError ? 2 : 1)
         }
 
+        // Before sending, so a failed call still shows where the prompt went and on what terms.
+        if !target.isLocalNetwork { err("— \(target.provider.retentionNote)\n") }
         let result = try await HybridEscalator().escalate(
             to: target, systemPrompt: nil, context: "", question: prompt,
             maxTokens: maxTokens, redactPII: !target.isLocalNetwork)
@@ -152,7 +155,15 @@ struct TonamoxCLI {
     }
 
     static func parseChoice(_ value: String) -> AskTargetResolver.Choice {
-        guard let choice = AskTargetResolver.Choice(rawValue: value.lowercased()) else {
+        let name = value.lowercased()
+        if name == "copilot" || name == "github" {
+            err("tonamox ask: GitHub Copilot has no official OpenAI-compatible chat API (its SDK runs agent sessions "
+                + "only, and GitHub Models was retired on 2026-07-30), so it cannot be a provider. Use --provider "
+                + "local, openai, anthropic or gemini, "
+                + "or --base-url <url> --model <id> for another OpenAI-compatible server.\n")
+            exit(2)
+        }
+        guard let choice = AskTargetResolver.Choice(rawValue: name) else {
             askUsageError("unknown provider \"\(value)\"")
         }
         return choice
@@ -246,13 +257,14 @@ struct TonamoxCLI {
         USAGE:
           tonamox providers                      Detect local providers (Ollama / llama-server / Magnitude)
           tonamox tools                          List on-device ML tools by category, with availability
-          tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
+          tonamox ask "<prompt>" [--provider auto|local|openai|anthropic|gemini] [--model <id>]
                    [--base-url <url>] [--max-tokens N]
                                               Ask a bigger model: a running llama-server, else Ollama,
                                                 else Magnitude (auto, the default); a cloud API
                                                 only when named
                                                 (default models \(RemoteTarget.defaultOpenAIModel),
-                                                \(RemoteTarget.defaultAnthropicModel))
+                                                \(RemoteTarget.defaultAnthropicModel),
+                                                \(RemoteTarget.defaultGeminiModel))
           tonamox ocr <image>                    Extract text from an image via native Vision OCR
           tonamox ml <subcommand> …              Run an on-device ML tool (`tonamox ml help` lists them):
                                                 classify-image, barcodes, faces, ocr-lines, document,
@@ -272,10 +284,14 @@ struct TonamoxCLI {
                    [--workload chat|code|long|all] [--runs N] [--temperature T] [--max-tokens N] [--json]
                                               Which engine runs a model fastest here: in-process
                                                 llama.cpp / MLX vs llama-server, Ollama, Magnitude
+          tonamox serve --model <id|path.gguf> [--port N]
+                                              Serve an on-disk model through an OpenAI-compatible API
+                                                on 127.0.0.1 (key in a 0600 file for curl -H @file)
 
         ENV (used by `ask`):
           OPENAI_API_KEY      --provider openai; else Keychain account cloud.openai
           ANTHROPIC_API_KEY   --provider anthropic; else Keychain account cloud.anthropic
+          GOOGLE_API_KEY      --provider gemini; else GEMINI_API_KEY; else Keychain account cloud.gemini
                               (Keychain service dev.auralocal.remote)
           AURA_API_KEY        --base-url, optional, env only (sent as a Bearer token)
         """)

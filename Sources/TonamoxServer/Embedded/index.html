@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>Tonamox</title>
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <h1>Tonamox</h1>
+    <span id="server-name" class="muted"></span>
+    <span id="current-model" class="current-model small" hidden></span>
+  </div>
+  <div class="top-actions">
+    <span id="session-expiry" class="muted small"></span>
+    <div id="language" class="language" role="group" data-i18n-aria-label="lang.group">
+      <button type="button" class="secondary" data-lang="es" lang="es" aria-pressed="false">Español</button>
+      <button type="button" class="secondary" data-lang="en" lang="en" aria-pressed="false">English</button>
+    </div>
+    <button id="open-guide" type="button" class="secondary" data-i18n="top.guide" aria-haspopup="dialog"
+            aria-controls="guide-dialog" hidden></button>
+    <button id="logout" type="button" class="secondary" data-i18n="top.logout" hidden></button>
+    <p id="language-status" class="visually-hidden" role="status"></p>
+  </div>
+</header>
+
+<div id="banner-unencrypted" class="banner warn" role="alert" hidden>
+  <strong data-i18n="banner.unencrypted.title"></strong>
+  <span data-i18n="banner.unencrypted.body"></span>
+  <span id="banner-unencrypted-where"></span>
+</div>
+<div id="banner-status" class="banner info" role="status" hidden></div>
+
+<main>
+  <noscript>
+    <section class="card narrow fallback">
+      <p><span lang="es">Esta página necesita JavaScript.</span> <span lang="en">This page needs JavaScript.</span></p>
+    </section>
+  </noscript>
+  <section id="loading" class="card narrow">
+    <p class="fallback" data-i18n="loading.text"><span lang="es">Conectando con el servidor…</span>
+      <span lang="en">Connecting to the server…</span></p>
+  </section>
+
+  <section id="pairing" class="card narrow" aria-labelledby="pairing-title" hidden>
+    <h2 id="pairing-title" data-i18n="pair.title"></h2>
+    <ol class="steps">
+      <li data-i18n="pair.step.open"></li>
+      <li data-i18n="pair.step.request"></li>
+      <li data-i18n="pair.step.type"></li>
+    </ol>
+    <div id="pair-step-request" class="field-row">
+      <label for="pair-name" data-i18n="pair.name.label"></label>
+      <input id="pair-name" type="text" maxlength="60" autocomplete="off" spellcheck="false">
+      <button id="pair-request" type="button" data-i18n="pair.request"></button>
+    </div>
+    <div id="pair-step-code" class="field-row" hidden>
+      <label for="pair-code" data-i18n="pair.code.label"></label>
+      <input id="pair-code" type="text" maxlength="9" autocomplete="one-time-code" autocapitalize="characters"
+             spellcheck="false" placeholder="XXXX-XXXX">
+      <button id="pair-claim" type="button" data-i18n="pair.claim"></button>
+      <button id="pair-restart" type="button" class="secondary" data-i18n="pair.restart"></button>
+    </div>
+    <p id="pair-message" class="message" role="status"></p>
+  </section>
+
+  <div id="workspace" class="workspace" hidden>
+    <section id="chat" class="card chat" aria-labelledby="chat-title">
+      <div class="chat-head">
+        <h2 id="chat-title" data-i18n="chat.title"></h2>
+        <label for="model" data-i18n="chat.model.label"></label>
+        <select id="model"></select>
+        <label for="reason" class="visually-hidden" data-i18n="chat.reason"></label>
+        <select id="reason" class="compact"></select>
+        <label for="length" class="visually-hidden" data-i18n="chat.length"></label>
+        <select id="length" class="compact"></select>
+        <button id="clear" type="button" class="secondary" data-i18n="chat.clear"></button>
+      </div>
+      <div id="banner-egress" class="banner warn" hidden></div>
+      <ol id="messages" class="messages" aria-live="polite"></ol>
+      <div id="empty-chat" class="empty-chat muted">
+        <p data-i18n="chat.empty"></p>
+        <p class="small" data-i18n="chat.guideHint"></p>
+      </div>
+      <div class="composer">
+        <label for="prompt" class="visually-hidden" data-i18n="chat.prompt.label"></label>
+        <textarea id="prompt" rows="3" data-i18n-placeholder="chat.prompt.placeholder"></textarea>
+        <div class="composer-actions">
+          <button id="send" type="button" data-i18n="chat.send"></button>
+          <button id="stop" type="button" class="danger" data-i18n="chat.stop" hidden></button>
+        </div>
+      </div>
+      <p id="chat-message" class="message" role="status"></p>
+    </section>
+  </div>
+</main>
+
+<dialog id="guide-dialog" class="guide-dialog" aria-labelledby="guide-title">
+  <div class="guide-sheet">
+    <div class="guide-head">
+      <h2 id="guide-title" data-i18n="guide.title"></h2>
+      <button id="guide-close" type="button" class="secondary" data-i18n="guide.close"></button>
+    </div>
+    <div id="guide" class="guide">
+      <p id="guide-intro" class="muted small"></p>
+      <div id="guide-body"></div>
+      <p class="muted small guide-footer" data-i18n="footer.text"></p>
+    </div>
+  </div>
+</dialog>
+
+<footer class="muted small" data-i18n="footer.text"></footer>
+</body>
+</html>
