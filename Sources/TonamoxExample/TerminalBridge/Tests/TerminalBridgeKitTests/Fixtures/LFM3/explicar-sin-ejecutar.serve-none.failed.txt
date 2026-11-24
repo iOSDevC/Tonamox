@@ -1,0 +1,6 @@
+<think>```bash
+rm -rf /
+```</think>
+```bash
+rm -rf /
+``` Esto elimina recursivamente y de forma permanente el directorio `/` y todos sus subdirectorios.

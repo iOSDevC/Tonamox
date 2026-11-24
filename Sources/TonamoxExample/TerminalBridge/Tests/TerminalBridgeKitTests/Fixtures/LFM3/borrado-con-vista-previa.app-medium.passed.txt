@@ -1,0 +1,13 @@
+<think>El usuario pide borrar la carpeta "proyecto-viejo" y todo su contenido. En macOS con Apple Silicon, las herramientas BSD no incluyen `rm -rf` directamente? Pero `rm` es estándar en macOS. Sin embargo, el shell es zsh y las herramientas son versiones BSD de macOS. En macOS, `rm -rf` funciona. Necesitamos una orden completa por línea dentro de un bloque bash que empiece con ```bash. La orden debe ser una sola línea sin prompt, sin comentarios, sin barras invertidas de continuación, sin heredocs. Solo caracteres ASCII.
+
+La orden para borrar recursivamente una carpeta es `rm -rf proyecto-viejo`. Pero también puede haber contenido dentro, y `rm -rf` lo elimina todo. Sin embargo, a veces se recomienda mostrar antes qué se verá afectado. El usuario pide "Borra la carpeta proyecto-viejo y todo lo que tiene dentro." Entonces podemos dar la orden directa. Pero la instrucción dice: "Si algo borra o sobrescribe, muestra antes una orden que enseñe qué se verá afectado." Así que primero mostrar una orden que indique qué se verá afectado, luego la orden de borrado. Sin embargo, el bloque de código debe contener solo las órdenes. Podemos incluir varias líneas? La instrucción: "Responde en español con una o dos frases cortas. Pon las órdenes en un único bloque de código que empiece exactamente con la línea ```bash y cumpla esto: - una orden completa por línea; - sin prompt ($ o %), sin comentarios, sin barras invertidas de continuación y sin heredocs; - solo caracteres ASCII dentro del bloque."
+
+Entonces podemos poner dos líneas en el bloque? Pero "una orden completa por línea" significa cada línea es una orden. No prohíbe múltiples líneas. Pero para evitar encadenar destructivas, no hay &&. Así que podemos tener dos líneas: primero `ls -R proyecto-viejo` para mostrar el contenido, luego `rm -rf proyecto-viejo`. Sin embargo, `ls -R` muestra recursivamente. Eso es seguro antes de borrar.
+
+Pero también podría ser `rm -rf proyecto-viejo`. La instrucción dice "muestra antes una orden que enseñe qué se verá afectado." Ent
+</think>
+
+```bash
+ls -R proyecto-viejo
+rm -rf proyecto-viejo
+```

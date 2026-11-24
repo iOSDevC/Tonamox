@@ -26,7 +26,8 @@ let package = Package(
         ),
         .testTarget(
             name: "TerminalBridgeKitTests",
-            dependencies: ["TerminalBridgeKit"]
+            dependencies: ["TerminalBridgeKit"],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "TerminalBridgeHelperTests",
