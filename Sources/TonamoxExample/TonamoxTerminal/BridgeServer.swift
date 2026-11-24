@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import os
 import TerminalBridgeKit
+import TonamoxUI
 import UIKit
 
 /// Thin main-actor layer over the Kit's PhoneBridgeSession: listens on 127.0.0.1 while the app is active,
@@ -180,7 +181,7 @@ final class BridgeServer: ObservableObject {
                 startRetries = 0
                 retriesExhausted = false
             }
-            UIApplication.shared.isIdleTimerDisabled = isConnected
+            ScreenAwakeCoordinator.shared.setHeld(isConnected, for: .bridge)
         case .status(let status):
             latestStatus = status
             if status.target.state == .ready { pendingTypedTarget = nil }
@@ -233,4 +234,9 @@ private final class BackgroundActivity {
         UIApplication.shared.endBackgroundTask(identifier)
         identifier = .invalid
     }
+}
+
+extension ScreenAwakeReason {
+    /// The Mac helper is connected.
+    static let bridge = ScreenAwakeReason("bridge")
 }

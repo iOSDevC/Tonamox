@@ -43,6 +43,11 @@ struct PairingStore {
         var cleanup = probe
         cleanup[kSecAttrAccessGroup as String] = group
         SecItemDelete(cleanup as CFDictionary)
+        guard OwnKeychainGroup.isOwn(group, sharedGroups: [TonamoxAppGroup.identifier]) else {
+            log.error("Keychain default group \(group, privacy: .public) is shared; using memory instead")
+            return nil
+        }
+        log.notice("Keychain own group: \(group, privacy: .public)")
         return group
     }()
 
