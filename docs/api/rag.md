@@ -103,6 +103,11 @@ public struct DocumentAnswer: Sendable {
         let score: Float
     }
 }
+
+// Retrieval only: the sources ask() would use, same ranking and excerpts, without generating an answer.
+// Needs the embedding provider from configure(); never calls or loads the LLM. Throws
+// DocumentError.libraryNotReady without a provider.
+func search(_ query: String, topK: Int = 5) async throws -> [DocumentAnswer.SourceReference]
 ```
 
 ### Management

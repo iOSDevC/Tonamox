@@ -33,11 +33,11 @@ description: "Add Tonamox to your iOS, macOS, or visionOS project via Swift Pack
 | iOS | 18.0+ |
 | macOS | 15.0+ |
 | visionOS | 2.0+ |
-| Xcode | 16.3+ (Swift 6.1); Xcode 26 for `TonamoxAppleIntelligence` and `TonamoxAgents`; Xcode 26.4 for `TonamoxImageGen` and the `tonamox` CLI |
+| Xcode | 16.3+ (Swift 6.1); Xcode 27 for `TonamoxAppleIntelligence` and `TonamoxAgents`; Xcode 26.4 for `TonamoxImageGen` and the `tonamox` CLI |
 | Swift | 6.1 toolchain (your manifest can stay at tools-version 6.0) |
 
 {: .important }
-> Tonamox requires a **Swift 6.1** toolchain, because its pinned dependencies declare tools-version 6.1, and **C++ interoperability mode**, because the llama.cpp backend (`LocalLLMClient`) contains C++ headers. Every target that imports `TonamoxCore`, or a module built on it, must enable C++ interop. `TonamoxAppleIntelligence` and `TonamoxAgents` import FoundationModels, so they build only with the iOS 26 / macOS 26 SDK. `TonamoxImageGen`, and the `tonamox` CLI built on it, use `ImagePlaygroundOptions`, which first appears in the 26.4 SDKs (Xcode 26.4).
+> Tonamox requires a **Swift 6.1** toolchain, because its pinned dependencies declare tools-version 6.1, and **C++ interoperability mode**, because the llama.cpp backend (`LocalLLMClient`) contains C++ headers. Every target that imports `TonamoxCore`, or a module built on it, must enable C++ interop. `TonamoxAppleIntelligence` and `TonamoxAgents` import FoundationModels, so they build only with the iOS 27 / macOS 27 SDK (Xcode 27), and their APIs require iOS 27, macOS 27 or visionOS 27 at run time. `TonamoxImageGen`, and the `tonamox` CLI built on it, use `ImagePlaygroundOptions`, which first appears in the 26.4 SDKs (Xcode 26.4).
 
 ---
 
@@ -103,7 +103,7 @@ Tonamox pulls in six dependencies automatically — you do not need to add them 
 
 | Package | Purpose |
 |---------|---------|
-| [LocalLLMClient](https://github.com/tattn/LocalLLMClient) 0.5.0, pinned by revision | Swift wrapper for llama.cpp (build b8851): GGUF inference |
+| [LocalLLMClient](https://github.com/tattn/LocalLLMClient) 0.5.0 | Swift wrapper for llama.cpp: GGUF inference. Upstream 0.5.0 bundles build b8851; this branch builds against a local, unpublished fork on b12407 (`../LocalLLMClient-tonamox`), so it does not resolve outside the maintainer's machine yet |
 | [mlx-swift-lm](https://github.com/ml-explore/mlx-swift-lm) 3.31.3 or later | MLX GPU inference for `.mlx` models |
 | [mlx-swift](https://github.com/ml-explore/mlx-swift) 0.31.3 up to, not including, 0.31.5 | The MLX arrays and Metal kernels under mlx-swift-lm. 0.31.5 does not build for iOS (mlx-swift #436) and 0.31.6 is the version in an open report of an app hanging before `main()` on iOS 27 (#485); a resolve without Tonamox's lockfile gets 0.31.4 |
 | [swift-transformers](https://github.com/huggingface/swift-transformers) 1.3.0 or later | Tokenizers for MLX models and for the Core ML text-embedding tool (multilingual-e5) |
@@ -268,8 +268,8 @@ import TonamoxUI     // prebuilt SwiftUI tabs
 import TonamoxVoice  // voice pipeline
 import TonamoxDocs   // RAG document library
 
-import TonamoxAgents             // AgentCrew multi-agent pipeline (iOS 26 / macOS 26)
-import TonamoxAppleIntelligence  // FoundationModels agents; no TonamoxCore dependency (iOS 26 / macOS 26)
+import TonamoxAgents             // AgentCrew multi-agent pipeline (iOS 27 / macOS 27 / visionOS 27)
+import TonamoxAppleIntelligence  // FoundationModels agents; no TonamoxCore dependency (iOS 27 / macOS 27 / visionOS 27)
 import TonamoxImageGen           // text-to-image: Core ML Stable Diffusion on device; FLUX via mflux on macOS
 ```
 

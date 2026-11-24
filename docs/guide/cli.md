@@ -35,7 +35,7 @@ swift build -c release --product tonamox
 ```
 tonamox providers                      # detect Ollama / llama-server / Magnitude + models
 tonamox tools                          # list on-device ML tools by category, with availability
-tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
+tonamox ask "<prompt>" [--provider auto|local|openai|anthropic|gemini] [--model <id>]
          [--base-url <url>] [--max-tokens N]  # ask a bigger model; local unless you name a cloud API
 tonamox ocr <image>                    # native Vision OCR; ignores EXIF orientation (camera photos: tonamox ml ocr-lines)
 tonamox ml <subcommand> …              # run an on-device ML tool (see below)
@@ -46,6 +46,7 @@ tonamox bench [--gguf <path>]... [--mlx <id>]... [--server <kind>[:<model>]]... 
 tonamox imagegen "<prompt>" [--model schnell|dev|<repo>] [--base-model schnell|dev]
               [--lora <file.safetensors> [--lora-scale S]]... [--steps N] [--seed N]
               [--quantize 3|4|6|8] [--low-ram] [--out <dir>]   # FLUX via mflux (macOS; needs uv tool install mflux)
+tonamox serve --model <id|path.gguf> [--port N] [--browser]   # serve an on-disk model on 127.0.0.1 (see below)
 ```
 
 - **`providers`** / **`tools`** / **`ocr`** / **`ml`** / **`models`** need no key and no model download.
@@ -58,7 +59,7 @@ tonamox imagegen "<prompt>" [--model schnell|dev|<repo>] [--base-model schnell|d
 ## Ask a bigger model (`tonamox ask`)
 
 ```
-tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
+tonamox ask "<prompt>" [--provider auto|local|openai|anthropic|gemini] [--model <id>]
          [--base-url <url>] [--max-tokens N]
 ```
 
@@ -69,10 +70,12 @@ tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
 | `auto` (default), `local` | A running `llama-server` (`127.0.0.1:8080/v1`), else Ollama (`localhost:11434`), else Magnitude (`127.0.0.1:10100/inference/v1`); the model with the largest trained context (Ollama: its first listed model) | none |
 | `openai` | `https://api.openai.com/v1`, default model `gpt-4o` | `OPENAI_API_KEY`, else Keychain account `cloud.openai` |
 | `anthropic` | Anthropic Messages API, default model `claude-sonnet-4-5` | `ANTHROPIC_API_KEY`, else Keychain account `cloud.anthropic` |
+| `gemini` | Google's OpenAI-compatible Gemini endpoint (`https://generativelanguage.googleapis.com/v1beta/openai/`, beta), default model `gemini-3.5-flash-lite` | `GOOGLE_API_KEY`, else `GEMINI_API_KEY`, else Keychain account `cloud.gemini` |
 
 - **`auto` never picks a cloud API.** It also skips Ollama cloud models (`name:cloud`, which Ollama
   forwards to `ollama.com`; `tonamox providers` marks them). With no on-machine model running, it exits 1
-  and lists the options (start llama-server / Ollama / Magnitude, `--provider openai|anthropic`, or `--base-url`).
+  and lists the options (start llama-server / Ollama / Magnitude, `--provider openai|anthropic|gemini`, or
+  `--base-url`).
 - **`--model <id>`** overrides the default. For `auto` / `local` it selects the local server that
   serves that model (`llama3` also matches Ollama's `llama3:latest`) and fails if none does.
 - **`--base-url <url> --model <id>`** sends to any other OpenAI-compatible server (`chat/completions`
@@ -82,17 +85,28 @@ tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>]
   link-local, `localhost`, `*.local` or `*.home.arpa` host counts as your own machine; any other host
   counts as cloud. The check looks at the host only, so a local server that forwards the model
   elsewhere (an Ollama `:cloud` model named with `--model`) still counts as local. `--base-url` can't
-  be combined with `--provider openai|anthropic`, and `--provider local --base-url` accepts only a
+  be combined with `--provider openai|anthropic|gemini`, and `--provider local --base-url` accepts only a
   local-network host.
-- **`--max-tokens N`** caps the answer (default 512).
+- **`--max-tokens N`** caps the answer (default 512). On Gemini it likely caps thinking and the answer together
+  (not verified), and thinking cannot be turned off on Gemini 3 or later.
+- **`gemini`** sends no `temperature` (Google deprecated it on 2026-07-21), and Tonamox has no price for it (the cost
+  ledger records its calls at an unknown cost). When both `GOOGLE_API_KEY` and `GEMINI_API_KEY` are set,
+  `GOOGLE_API_KEY` wins, as in Google's SDKs. With a free-tier key Google may use prompts and responses to improve
+  its products and human reviewers may read them; apps offered in the EEA, the UK or Switzerland may use only paid
+  keys.
+- **`--provider copilot`** (or `github`) exits 2 with an explanation: GitHub Copilot has no official
+  OpenAI-compatible chat API (its SDK runs agent sessions only), and GitHub Models was retired on 2026-07-30.
 
 ```sh
 tonamox ask "Summarize RFC 9110 in one sentence" > answer.txt      # your llama-server / Ollama / Magnitude
 tonamox ask "Review this function: …" --provider anthropic          # sends to Anthropic
+tonamox ask "Translate to French: …" --provider gemini              # sends to Google's Gemini API
 tonamox ask "Hello" --base-url http://192.168.1.20:8080/v1 --model qwen3-32b
 ```
 
-The answer goes to stdout, so it pipes cleanly. A receipt goes to stderr:
+The answer goes to stdout, so it pipes cleanly. Before a cloud target is sent the prompt, its retention note
+(the provider's data-use terms, such as Gemini's free-tier terms) goes to stderr as `— <note>`. A receipt follows on
+stderr:
 `— via <provider> · <model>[ · <in> in / <out> out][ · cached]`. Token counts appear when the
 server reports them. The response cache lives in memory, and each `tonamox ask` is a new process that
 sends one request, so the CLI never answers from it and `· cached` does not appear in practice.
@@ -150,7 +164,7 @@ Training is reproducible: the same CSV and `--seed` give the same split, accurac
 
 ## Model compatibility (`tonamox models`)
 
-Checks Hugging Face repos against the runtimes Tonamox pins (mlx-swift-lm 3.31.3, llama.cpp b8851) and a
+Checks Hugging Face repos against the runtimes Tonamox pins (mlx-swift-lm 3.31.3, llama.cpp b12407) and a
 device budget — see [Finding compatible models]({{ '/guide/models' | relative_url }}#finding-compatible-models).
 
 ```
@@ -173,10 +187,10 @@ whole top-level quant.
 `--device` defaults to `this-device` (see `tonamox models devices`); `--limit` defaults to 15 (1–100).
 `search` and `check` query huggingface.co, so they need a network connection.
 
-A local `.gguf` that llama.cpp b8851 fails to load (`bench --gguf`, `receipt --model`) is checked against the same
-`gguf.architecture` and `gguf.qwen35-nextn` rules offline: when one blocks it, the error names that blocker (for a
-`qwen35` MTP block, that it needs llama.cpp b9180) and ends with the original "Failed to load model from file".
-`gguf.architecture`'s "not a chat model" blocker is left out, since b8851 loads those architectures, so such a file
+A local `.gguf` that llama.cpp b12407 fails to load (`bench --gguf`, `receipt --model`) is checked against the same
+`gguf.architecture` rule offline: when it blocks it, the error names that blocker (an architecture b12407 does not
+list) and ends with the original "Failed to load model from file".
+`gguf.architecture`'s "not a chat model" blocker is left out, since llama.cpp loads those architectures, so such a file
 keeps the original error ([details]({{ '/guide/models' | relative_url }}#what-it-checks)).
 
 ## Receipt fields (`tonamox receipt`)
@@ -294,6 +308,33 @@ tonamox bench --mlx qwen3_4b --all-servers --workload long --json > bench.json
   (every engine failed to load, or every workload failed), with the failures reported below the table; `2` for
   usage errors, among them a `--gguf` path with no file and a run with no engine left to benchmark; `130` after
   Ctrl-C, which stops the run and still prints the partial report (a second Ctrl-C quits at once).
+
+## Local server (`tonamox serve`)
+
+```
+tonamox serve --model <id|path.gguf> [--port N] [--browser]
+tonamox serve --scripted [--port N] [--browser]
+```
+
+Serves one model through the OpenAI-compatible API of [TonamoxServer]({{ '/guide/server' | relative_url }}) on
+`127.0.0.1` (default port 47830) until Ctrl-C or SIGTERM.
+
+- **No download.** `--model` takes a catalog id or a `.gguf` path, like `tonamox receipt`; a model that is not on disk
+  is refused. The served instance is loaded without tools.
+- **The key is never printed.** A fresh API key goes to `~/Library/Application Support/tonamox/server-key.header`
+  (directory 0700, file 0600, created with `O_CREAT|O_EXCL|O_NOFOLLOW` and renamed into place) as one curl header line.
+  It is valid only while the process runs. Use it with `curl -H @<file>`, so the key never appears in argv:
+
+  ```sh
+  curl -sS -H @"$HOME/Library/Application Support/tonamox/server-key.header" http://127.0.0.1:47830/v1/models
+  ```
+
+- **`--scripted`** serves a fixed five-piece reply as model `scripted`, with no model at all, for smoke tests, and
+  a slower reply that opens with a `<think>` block as model `scripted-reasoning`, to see reasoning served apart.
+- **`--browser`** also serves the chat page at `http://127.0.0.1:<port>/` and opens a 120 s pairing window at start.
+  The terminal plays the phone's part: each pairing request prints the requester's address, its untrusted name and the
+  code to type into the page. Press Enter to open another window (one browser per window).
+- Exit status: `0` after Ctrl-C or SIGTERM, `1` when the port is taken or the model is unknown, not on disk or fails to load, `2` for flag errors.
 
 ## Homebrew
 

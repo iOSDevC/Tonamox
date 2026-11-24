@@ -97,6 +97,9 @@ func chat(_ prompt: String, systemPrompt: String? = nil, maxTokens: Int = 1024,
           constraint: GenerationConstraint? = nil) async throws -> String
 func stream(_ prompt: String, systemPrompt: String? = nil, maxTokens: Int = 1024,
             constraint: GenerationConstraint? = nil) -> AsyncThrowingStream<String, Error>
+// Awaitable stream: returns only after the backend stopped, cancellation included (for GenerationTurnstile.run)
+func generate(_ prompt: String, systemPrompt: String? = nil, maxTokens: Int = 1024,
+              onPiece: @escaping @MainActor (String) -> Void) async throws
 
 // Vision (image nil = text-only)
 func analyze(_ prompt: String, image: PlatformImage? = nil, maxTokens: Int = 800) async throws -> String
@@ -298,6 +301,11 @@ var deviceGuard: DeviceConditions?
 // Qwen3.5 text, Gemma 3/4 and LFM2 keep their own caches, so nothing was dropped),
 // or the last generation threw.
 var lastContextOverflow: ContextWindowOverflow? { get }
+
+// The KV window the loaded model got on this device: llama.cpp's n_ctx for GGUF (chosen at load from free
+// memory), the rotating cache's size for MLX; nil before a load and for remote models. Prompt, reasoning
+// budget and answer share it.
+var contextWindow: Int? { get }
 ```
 
 ### Generation Stats
@@ -343,8 +351,8 @@ public struct GenerationStats: Sendable, Hashable {
 
 LocalLLMClient 0.5.0 exposes no tokenizer or prompt count, so llama.cpp prompt counts stay estimates. A constrained
 call's clock starts after its dedicated client loads. `InferenceBackend` gained `var lastGenerationStats:
-GenerationStats? { get }` and `var lastContextOverflow: ContextWindowOverflow? { get }`, both with a public
-protocol-extension default of `nil`. It also requires `generate(prompt:systemPrompt:maxTokens:constraint:onToken:)`
+GenerationStats? { get }`, `var lastContextOverflow: ContextWindowOverflow? { get }` and `var contextWindow: Int?
+{ get }`, each with a public protocol-extension default of `nil`. It also requires `generate(prompt:systemPrompt:maxTokens:constraint:onToken:)`
 with no default, so a conformer written before constrained generation must add it; throwing
 `GenerationConstraintError.unsupportedBackend` is enough. No public API accepts a custom backend.
 
@@ -453,7 +461,7 @@ public enum ModelConfigurationError: LocalizedError, Equatable, Sendable {
 // Separate from TonamoxError so exhaustive switches over it keep compiling.
 public struct IncompatibleGGUFError: LocalizedError, Equatable, Sendable {
     let filename: String
-    let blockers: [CompatibilityFinding]  // gguf.architecture / gguf.qwen35-nextn, read from the file's header
+    let blockers: [CompatibilityFinding]  // gguf.architecture, read from the file's header
     let underlyingMessage: String         // LocalLLMClient's "Failed to load model from file"
 }
 ```
@@ -471,7 +479,7 @@ memory limit, it also evicts least-recently-used models until the new one is no 
 ones that stay
 ([Memory Management]({{ '/guide/memory' | relative_url }})).
 
-When llama.cpp fails to load a GGUF whose header a `gguf.architecture` or `gguf.qwen35-nextn` rule blocks (other
+When llama.cpp fails to load a GGUF whose header the `gguf.architecture` rule blocks (other
 than "not a chat model"), `load` throws `IncompatibleGGUFError` instead of LocalLLMClient's `LLMError.failedToLoad`,
 as do the `Tonamox` factories; `EngineBenchmark` stores its message in `loadError`. The blocker comes from the header
 alone, not from llama.cpp's own reason ([details]({{ '/guide/models' | relative_url }}#what-it-checks)).
@@ -784,8 +792,9 @@ Any other keyword (`$ref`, `$defs`, `pattern`, `format`, `patternProperties`, `i
 `not`, …) makes compilation throw `unsupportedKeywords`, so no constraint is skipped silently.
 `true` and `false` work as schemas anywhere a schema does.
 
-Candidates, in order: the whole reply; then, with reasoning removed (`<think>…</think>` spans, a
-leading block closed by a lone `</think>`, an unclosed `<think>` to the end), the whole reply again,
+Candidates, in order: the whole reply; then, with reasoning removed (`<think>…</think>` and
+`<thought>…</thought>` spans anywhere, tag names in any case, a leading block closed by a lone closing
+tag, an unclosed opening tag to the end), the whole reply again,
 each ```` ```json ```` (or unlabelled) fenced block, and each top-level balanced `{…}` or `[…]`.
 Brackets inside strings are skipped, and values nested in one that parsed are not candidates.
 `extractJSON` returns the first candidate that parses. `conformingJSON` and `TonamoxSession` take the
@@ -796,6 +805,161 @@ Parsing is strict RFC 8259: trailing commas, comments, single quotes, `NaN` and 
 names make a candidate not JSON, so the text `conformingJSON` returns reads the same in any
 conforming parser. Nesting deeper than 512 levels is rejected. Numbers compare as exact decimals:
 `9007199254740993` does not equal `9007199254740992`, and `1e400` is a valid number.
+
+#### Reasoning and answer
+
+`ReasoningSplitter` separates the reasoning a model writes before its answer, for a UI that shows it
+apart (TonamoxTerminal folds it into a collapsible block). It is a pure value type: feed it chunks as
+they stream, or split a finished string.
+
+```swift
+public struct ReasoningSplitter: Sendable {
+    enum Piece: Sendable, Equatable {
+        case reasoning(String)
+        case answer(String)
+        case answerRetracted          // the answer so far was reasoning; it follows as .reasoning
+    }
+    init()
+    static func split(_ text: String) -> ReasoningSplitter   // consume(text) + finish()
+    mutating func consume(_ chunk: String) -> [Piece]
+    mutating func finish() -> [Piece]                         // releases held bytes
+    private(set) var reasoning: String                        // blocks joined by a blank line
+    private(set) var answer: String
+    private(set) var blockCount: Int
+    private(set) var isReasoningUnterminated: Bool            // the stream ended inside a block
+    private(set) var isFinished: Bool
+    var hasReasoning: Bool { get }
+    var isInsideReasoning: Bool { get }                       // a block is open right now
+}
+
+var splitter = ReasoningSplitter()
+for try await chunk in stream { _ = splitter.consume(chunk); show(splitter.reasoning, splitter.answer) }
+_ = splitter.finish()
+```
+
+Rules:
+
+- Blocks are `<think>…</think>` and `<thought>…</thought>`; tag names ignore ASCII case, and a block
+  closes only with its own name. `<thinking>`, `<thoughtful>` and `<think >` are not tags.
+- Only leading blocks count: optional whitespace, then one or more blocks with optional whitespace
+  between them. The first other character starts the answer, and from there no tag is special: a tag
+  later in the answer or inside a code fence is answer text.
+- Inside a block, an opening tag of the same name nests, and the block ends at the closing tag that
+  balances it. A reasoning that mentions only `<think>` therefore never closes (fail-safe: no answer,
+  rather than reasoning in the answer).
+- In output that does not start with a block, the first closing tag ends a block the chat template
+  opened in the prompt: the text before it becomes reasoning. Streaming has already yielded that text
+  as answer, so `consume` returns `.answerRetracted` and then the text as `.reasoning`. This holds
+  wherever the tag appears, inside a code fence too and after an opening tag, so an answer that merely
+  mentions a closing tag loses the text before it to the reasoning.
+- When the prompt itself ends with the opening tag, feed that tag before the output so it starts inside
+  the block: `Tonamox.promptOpenedReasoningTag` (`String?`, `"<think>"` or `"<thought>"`) reports it
+  for a loaded GGUF whose chat template does this. It is `nil` before a load and for MLX and remote
+  models, which are not inspected; for those, reasoning cut off by the token limit before its closing
+  tag reads as answer.
+- A block that never closes makes the rest reasoning: after `finish()`, `isReasoningUnterminated` is
+  true and `answer` is empty.
+- Whitespace before and between blocks and before the answer is dropped (ASCII whitespace, U+00A0,
+  U+200B, U+3000 and a byte order mark); block text and the end of the answer are kept as written, so
+  trim the reasoning for display.
+- While streaming it holds back at most nine bytes, the longest proper prefix of `</thought>`, so a tag
+  split across chunks never shows up as text; `finish()` releases them (a final `<` becomes answer).
+  Any chunking gives the same result as `split`.
+
+#### Reasoning control
+
+GGUF instances (llama.cpp and layer streaming) can switch thinking off and cap the reasoning separately from the
+answer. MLX, Apple Intelligence and remote instances ignore these options (`reasoningSupport` is `.unsupported`).
+
+```swift
+public struct ReasoningOptions: Sendable, Hashable, Codable {
+    enum ThinkingMode: String { case automatic, disabled }
+    var thinking: ThinkingMode
+    var budget: Int?                       // reasoning tokens before the block is closed; nil: no own budget
+    init(thinking: ThinkingMode = .automatic, budget: Int? = nil)   // a negative budget counts as 0
+    static let automatic                   // template default, no budget: the behaviour before this API
+    static let disabled
+    static func budgeted(_ tokens: Int) -> ReasoningOptions
+}
+public struct ReasoningCapabilities: Sendable, Hashable {
+    let canDisableThinking: Bool           // rendering `enable_thinking = false` changes the prompt
+    let enforcesBudget: Bool               // the backend closes a block at its budget
+    static let unsupported
+}
+public struct ReasoningTurn: Sendable, Hashable {
+    let renderedWithoutThinking: Bool      // the template got enable_thinking = false
+    let budget: Int?                       // 0 when thinking was disabled without a budget
+    let reasoningTokens: Int               // pieces inside the leading block; the forced close is not counted
+    let answerTokens: Int
+    let wasCut: Bool                       // the budget closed the block for the model; false for budget 0
+}
+
+// On Tonamox:
+var reasoning: ReasoningOptions            // default for calls without options; read when a turn starts
+var reasoningSupport: ReasoningCapabilities
+var lastReasoningTurn: ReasoningTurn?      // nil before a generation, after one that threw, a constrained call
+func promptOpenedReasoningTag(for options: ReasoningOptions) -> String?
+func generate(_ prompt: String, systemPrompt: String? = nil, maxTokens: Int = 1024,
+              reasoning: ReasoningOptions? = nil, onPiece: @escaping @MainActor (String) -> Void) async throws
+```
+
+- **Thinking off.** `.disabled` renders the GGUF's chat template with `enable_thinking = false` when that changes
+  the prompt (Qwen3, LFM2.5, LFM3 and others; `reasoningSupport.canDisableThinking`). The check renders one user turn
+  both ways when the model loads, so a template that only names the variable, or whose default is already off, does
+  not count. Nothing is added to the user's message. Without a budget of its own, any reasoning block the model
+  still opens (or the prompt opens, on a template without the switch) is closed at once, as with a budget of 0, and
+  `lastReasoningTurn.budget` is 0. A budget of 0 is not a cut: `wasCut` stays `false`.
+- **Budget.** With `budget` set, `maxTokens` is the answer's: the reasoning may take up to `budget` tokens on top.
+  When the reasoning reaches the budget still inside its block, the engine decodes
+  `"\n\nConsidering the limited time by the user, I have to give the solution based on the thinking directly now.\n</think>\n\n"`
+  (the block's own closing tag, one per nesting level) into the context as if the model had written it, and keeps
+  decoding the answer. The sentence is the one Qwen's thinking-budget guide uses: with a bare closing tag LFM3-1.7B
+  went on reasoning in the answer. The stream gets the close without the sentence (`"\n</think>\n\n"`) as one more
+  piece, so a reader never sees it as the model's words. Budget 0 decodes and streams `"</think>\n\n"` alone, which
+  leaves the block empty, as a template renders thinking off. The close waits for a piece that is not empty (the
+  sampler holding part of a UTF-8 character) and for a half-written tag to resolve. A block the model reopens after
+  the close is closed once more with the bare tag; a third block ends the reply. In a tool loop every round shares
+  the one budget. The turn produces at most `maxTokens + budget + 1` pieces (`Int.max` when that overflows). Without
+  a budget nothing changes: reasoning counts against `maxTokens`.
+- History is trimmed to keep `maxTokens` free for the reply, plus the budget only when the prompt itself opens a
+  reasoning block; a model that opens one on its own may then fill the window, which ends its reply. Under memory
+  pressure layer streaming caps the answer at 256 tokens and the budget at a quarter of that cap.
+- The forced close happens in Tonamox's own turn engine, token by token on the `Context`. llama.cpp b12407's
+  `common/reasoning-budget` sampler is C++ in `common/` and LocalLLMClient's sampler chain does not include it, so it
+  is not reachable without changing the fork. A GGUF loaded with tools whose calls are not `<tool_call>` JSON decodes
+  through LocalLLMClient's `LlamaClient`, which cannot be interrupted mid-reply: there the budget is ignored, the
+  whole reply is capped at `maxTokens` and reasoning is only counted (`enforcesBudget == false`). The forced decode
+  does not wait for LocalLLMClient's background pause, which the fork keeps internal (TD-068).
+- `promptOpenedReasoningTag` follows `reasoning`; pass the call's options to `promptOpenedReasoningTag(for:)`
+  before feeding a `ReasoningSplitter`: a template rendered without thinking usually closes the block itself
+  (LFM3 ends the prompt with `<think></think>`).
+- MLX: not implemented. `MLXDecodeLoop` owns its token loop, so a forced close is possible there (TD-067).
+
+#### Boxed answers
+
+`BoxedAnswer` unwraps the LaTeX `\boxed{…}` that math-tuned models write in plain chat:
+
+```swift
+public enum BoxedAnswer {
+    static func display(_ text: String) -> String   // each box's content as **bold**, its own marks escaped
+    static func plain(_ text: String) -> String     // the content alone, for copying
+    static func containsBox(_ text: String) -> Bool
+}
+```
+
+Fenced code blocks and inline code spans are untouched. Braces nest and `\{`, `\}` are literal; an unclosed box
+stays as written. Inside a box `\text{}`, `\textbf{}`, `\mathrm{}` and nested boxes keep only their content. A math
+wrapper holding nothing but the box (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`, with spaces, tabs or line breaks around the
+box) goes too; `$x = \boxed{5}$` keeps its `$`. `display` escapes `*`, `_` and backticks in the content and adds no
+bold when the box already sits between the same `*` or `_` (`**\boxed{754}**` gives `**754**`). The content is trimmed
+of the characters JavaScript's `\s` matches. A backtick fence line with a backtick after its marks is prose, as in
+CommonMark.
+The browser page's `AnswerFormat` follows the same rules, checked on the shared fixtures in
+`Tests/SharedFixtures/boxed-answers.json`.
+
+The reasoning removal in `OutputSchemaValidator`'s extraction is broader on purpose: it drops blocks
+anywhere, because JSON never sits inside one. When the stripped text yields no candidate, a balanced
+value of the unstripped text that itself contains a tag (`{"tag":"</think>"}`) still counts.
 
 #### Schema grammars
 
@@ -987,17 +1151,31 @@ public struct CompatibilityReport: Sendable {
                                              // kvLayers (cache per layer type), experts (MoE routing)
     let weightsBytes: Int64?                 // non-GGUF weights
     let weightsFit: FitEstimate?
-    let quantFits: [QuantFit]                // every GGUF quant, smallest first, each with its fit
+    let quantFits: [QuantFit]                // every GGUF model quant, smallest first, each with its fit;
+                                             // adapters and auxiliary files (artifact.excludedFiles) never count
     let suggestedEntry: CatalogEntry?        // the models.json entry when it can run: entry.jsonText()
     let licenseID: String?
     let licenseName: String?
     let gatedMode: String?
+    let artifact: ArtifactClassification     // standalone model, adapter (LoRA) or auxiliary files, and the signal
 
     var blockers: [CompatibilityFinding]
     var caveats: [CompatibilityFinding]
     var headline: String                     // first blocker or caveat, else how it fits
     var bestFit: FitEstimate?                // weightsFit, or the recommended GGUF quant's fit
+    var recommendedQuant: QuantFit?          // the quant suggestedEntry downloads; nil when nothing runs
+    var smallestQuant: QuantFit?             // smallest single-file quant, for "nothing fits" answers
+    // QuantFit.recommended(in:) prefers top-level single files; QuantFit.isTopLevel says which are
     var huggingFaceURL: URL?
+}
+
+public struct ArtifactClassification: Sendable, Equatable {
+    let kind: ModelArtifactKind              // .standaloneModel, .adapter(base: String?), .auxiliary(AuxiliaryArtifact)
+    let signal: ArtifactSignal?              // the strongest signal that decided; nil for a plain model
+    let evidence: String?                    // the key, tag, file or word behind it
+    let excludedFiles: [ExcludedArtifactFile]  // GGUF files not offered as versions (path, kind, sizeBytes)
+    let isCertain: Bool                      // false for a name, or a tag/file no header could check
+    var isSuspectedAdapter: Bool             // a model, but some signal says it might be an adapter
 }
 
 public struct CompatibilityFinding: Sendable, Equatable, Identifiable {
@@ -1021,8 +1199,22 @@ public struct FitEstimate: Sendable, Equatable {
 `CompatibilityRules.all` lists the rules (`CompatibilityRule` has an `id` and a `summary`).
 `RepoSnapshot.listing` is the parsed repo listing (`HFRepoInfo`); its `revision` is the commit sha the listing
 describes, so later fetches can be pinned to it, as `CoreMLDiffusionInspector` does.
+`ModelArtifactClassifier.classify(_:)` decides `ArtifactClassification` from a snapshot alone; the evaluator calls
+it before judging any fit. Signals, strongest first (`ArtifactSignal`): `.ggufType` (`general.type` `adapter`),
+`.ggufAdapterKeys` (`adapter.*`), `.loraTensorNames` (`.lora_a` / `.lora_b`), `.huggingFaceTags` (`lora`, `peft`,
+`adapter`, `base_model:adapter:<repo>`), `.adapterFiles` (`adapter_config.json`, `adapter_model.safetensors`) and
+`.nameToken` (a word-bounded `lora` / `adapter` in a file or repo name; `isCertain` is `false`). A header that says
+`general.type` `model`, or carries `<arch>.block_count`, or tensor names without LoRA deltas, outranks tags, files
+and names. The first three describe the sampled GGUF only; with other model GGUFs in the repo, only that file is
+excluded. Without a confirming header, `lora` / `peft` / `adapter` tags, PEFT files and a repo-name word next to
+model files leave `kind` `.standaloneModel` with `isSuspectedAdapter` and an `artifact` caveat; only
+`base_model:adapter:` decides on its own. An adapter report has no quants, no entry, no fit findings and an
+`artifact` blocker that names the base when known
+(header `general.base_model.0.*`, the tag, or the card's `base_model`, kept in `HFRepoInfo.baseModels`).
+`QuantHint.text(for:)` gives a quant token's plain meaning (`Q4_K_M` → "balanced, common default").
 `GGUFHeaderParser.parse(_:)` reads GGUF v2/v3 metadata from the first bytes of a file into a
-`GGUFHeader` (`isComplete` is `false` when the bytes ran out), and `SafetensorsHeader.parse(_:)`
+`GGUFHeader` (`isComplete` is `false` when the bytes ran out; `generalType` is `general.type`; `tensorNames` keeps the
+first 64 tensor names when the bytes reach past the metadata), and `SafetensorsHeader.parse(_:)`
 does the same for a safetensors header.
 
 To find repos to check, `HuggingFaceSearch.search(_:limit:sort:tag:session:)` queries the Hugging
@@ -1672,6 +1864,7 @@ public final class HybridEscalator {
         consent: any ConsentGate = DenyingConsentGate(),   // asked via requestConsent(target:preview:offer:)
         maxTokens: Int = 1024,
         targets: [RemoteTarget]? = nil,    // nil = candidateTargets(policy:)
+        temperature: Float? = nil,         // as in escalate(_:to:temperature:onToken:)
         onToken: @escaping @MainActor (String) -> Void = { _ in }
     ) async throws -> Result?              // nil = the router kept it local
                                            // throws TonamoxError.escalationDeclined when the gate declines
@@ -1685,6 +1878,7 @@ public final class HybridEscalator {
         question: String,
         maxTokens: Int = 1024,
         redactPII: Bool = false,           // PIIRedactor on the context and the question
+        temperature: Float? = nil,         // as in escalate(_:to:temperature:onToken:)
         onToken: @escaping @MainActor (String) -> Void = { _ in }
     ) async throws -> Result
 
@@ -1700,11 +1894,14 @@ public final class HybridEscalator {
         redactPII: Bool = false
     ) -> EscalationPayload
     // Sends a payload exactly as built, without recompressing or redacting; an earlier request with the same
-    // provider, model, messages and maxTokens is answered from ResponseCache.shared. An empty or
-    // whitespace-only answer is returned but not cached. Records cost. Checks no policy, consent or cap.
+    // provider cacheIdentity, model, messages, maxTokens and temperature is answered from ResponseCache.shared.
+    // An empty or whitespace-only answer is returned but not cached. Records cost; a stream stopped after
+    // output without usage (cancel, dropped connection) is recorded at estimatedInputTokens + maxTokens,
+    // flagged Record.isEstimated, and a cancelled call throws CancellationError. Checks no policy, consent or cap.
     func escalate(
         _ payload: EscalationPayload,
         to target: RemoteTarget,
+        temperature: Float? = nil,         // the request's sampling temperature; nil sends 0.7
         onToken: @escaping @MainActor (String) -> Void = { _ in }
     ) async throws -> Result
 
@@ -1712,11 +1909,13 @@ public final class HybridEscalator {
     // largest-context model; nil if none runs. Nothing scans the network.
     // Skips models with runsLocally == false (Ollama cloud models forward prompts off the machine).
     static func bestLocalTarget() async -> RemoteTarget?
-    // BYOK targets from the Keychain: "cloud.anthropic", then "cloud.openai". [] when !allowCloud.
+    // BYOK targets from the Keychain: "cloud.anthropic", then "cloud.openai", then "cloud.gemini" (unpriced),
+    // each only when its key is stored. [] when !allowCloud.
     static func cloudTargets(
         allowCloud: Bool,
         anthropicModel: String = RemoteTarget.defaultAnthropicModel,   // "claude-sonnet-4-5"
-        openAIModel: String = RemoteTarget.defaultOpenAIModel          // "gpt-4o"
+        openAIModel: String = RemoteTarget.defaultOpenAIModel,         // "gpt-4o"
+        geminiModel: String = RemoteTarget.defaultGeminiModel          // "gemini-3.5-flash-lite"
     ) -> [RemoteTarget]
     // bestLocalTarget() first, then cloudTargets(allowCloud: policy.allowCloud).
     static func candidateTargets(policy: EscalationPolicy) async -> [RemoteTarget]
@@ -1782,6 +1981,9 @@ The pure decision behind `routeAndEscalate`, which fills `RoutingInput` from its
 ```swift
 public enum EscalationRouter {
     static func decide(_ input: RoutingInput) -> RoutingDecision   // rules R1–R7, no I/O
+    // A send the user asked for, to a target the user chose: no trigger needed, allowCloud checked here,
+    // the cost cap refuses instead of offering.
+    static func decideUserRequested(_ input: RoutingInput) -> UserRequestedDecision
 }
 
 public struct RoutingInput: Sendable {
@@ -1799,6 +2001,16 @@ public enum RoutingDecision: Sendable, Equatable {
     case offer(reason: EscalationReason)
 }
 
+public enum UserRequestedDecision: Sendable, Equatable {
+    case refuse(UserRequestRefusal)          // nothing is sent
+    case ask(reason: EscalationReason)       // .userRequested, or .costUnknown for an unpriced cloud target/session
+    case send                                // only a LAN target under .autoWithConsentMemory
+}
+
+public enum UserRequestRefusal: Sendable, Equatable {
+    case policyOff, cloudNotAllowed, offline, overCostCap
+}
+
 public enum EscalationReason: String, Sendable, Equatable {
     case sizeOverflow, lowConfidence, domainSensitive, userRequested
     case costCapped    // a trigger fired, but sessionSpentUSD + a non-zero projection exceeds the cap
@@ -1810,7 +2022,12 @@ public enum EscalationReason: String, Sendable, Equatable {
 ### Providers & targets
 
 ```swift
-public protocol RemoteLLMProvider: Sendable { /* id, displayName, retentionNote, stream(_:) */ }
+public protocol RemoteLLMProvider: Sendable {
+    /* id, displayName, retentionNote, stream(_:) */
+    // ResponseCache key; defaults to id. OpenAICompatibleProvider and AnthropicProvider return
+    // "<id>@<scheme>://<host>:<port><path>" of their base URL (no user, password, query or key).
+    var cacheIdentity: String { get }
+}
 
 public enum RemoteEvent: Sendable {
     case token(String)       // an answer delta
@@ -1841,6 +2058,12 @@ public struct RemoteTarget: Sendable {
 
     static let defaultOpenAIModel: String      // "gpt-4o"
     static let defaultAnthropicModel: String   // "claude-sonnet-4-5"
+    static let defaultGeminiModel: String      // "gemini-3.5-flash-lite"
+
+    // Google's OpenAI-compatible endpoint (https://generativelanguage.googleapis.com/v1beta/openai/, beta),
+    // Bearer key, provider id "cloud.gemini", origin .cloud, contextLength nil, unpriced. Sends no temperature
+    // (deprecated by Google on 2026-07-21). retentionNote names the free tier's terms and the EEA/UK/CH rule.
+    static func gemini(apiKey: String, model: String) -> RemoteTarget
 }
 ```
 
@@ -1854,7 +2077,7 @@ public struct RemoteTarget: Sendable {
 
 The provider choice behind `tonamox ask`, as a pure function: no network, no Keychain access of its own.
 Without a `baseURL`, `.auto` / `.local` never return a cloud target; a prompt leaves the machine
-only when the caller names `.openAI` / `.anthropic` or passes a base URL. A `baseURL` is
+only when the caller names `.openAI` / `.anthropic` / `.gemini` or passes a base URL. A `baseURL` is
 classified by its host alone: loopback or private network is `.localNetwork(.llamaServer)`,
 anything else `.cloud` (also under `.auto`).
 
@@ -1864,13 +2087,15 @@ public enum AskTargetResolver {
         case auto, local                 // llama-server, else Ollama, else Magnitude (bestLocalTarget order)
         case openAI = "openai"           // key: OPENAI_API_KEY, else Keychain "cloud.openai"
         case anthropic                   // key: ANTHROPIC_API_KEY, else Keychain "cloud.anthropic"
+        case gemini                      // key: GOOGLE_API_KEY, else GEMINI_API_KEY, else Keychain "cloud.gemini"
     }
 
     enum Failure: Error, Equatable, LocalizedError {
         case noLocalProvider
         case modelNotServedLocally(model: String, available: [String])
         case missingAPIKey(provider: Choice, environmentVariable: String, keychainAccount: String)
-        case conflictingOptions(String)  // baseURL with .openAI/.anthropic, or .local with a public host
+                                         // environmentVariable: "GOOGLE_API_KEY or GEMINI_API_KEY" for .gemini
+        case conflictingOptions(String)  // baseURL with .openAI/.anthropic/.gemini, or .local with a public host
         case modelRequired               // baseURL without a model
         case invalidBaseURL(String)
         var isUsageError: Bool           // true for the last three (tonamox exits 2; otherwise 1)
@@ -1881,7 +2106,7 @@ public enum AskTargetResolver {
         model: String? = nil,             // nil: the provider's default (local: largest context window)
         baseURL: String? = nil,           // any OpenAI-compatible server; key from AURA_API_KEY
         environment: [String: String],
-        readKey: (String) -> String?,     // e.g. KeychainStore.read(for:); called only for .openAI/.anthropic
+        readKey: (String) -> String?,     // e.g. KeychainStore.read(for:); called only for .openAI/.anthropic/.gemini
         localProviders: [LocalProviderStatus]   // from LocalProviderDetector.detectAll()
     ) throws(Failure) -> RemoteTarget
 }
@@ -1894,7 +2119,7 @@ A `baseURL` host that is loopback, private (RFC 1918, IPv6 ULA), link-local, `lo
 
 ```swift
 // BYOK API keys — Keychain only (WhenUnlockedThisDeviceOnly, never iCloud-synced).
-// Accounts read by Tonamox: "cloud.anthropic" · "cloud.openai" · "download.huggingface"
+// Accounts read by Tonamox: "cloud.anthropic" · "cloud.openai" · "cloud.gemini" · "download.huggingface"
 // (Hugging Face token for gated repos, KeychainDownloadAuth.huggingFaceAccount; also used by
 // ModelCompatibilityChecker) · "download.<host>" (bearer token for any other download host).
 // "cloud.github-models" is no longer read (GitHub Models was retired).
@@ -1926,8 +2151,9 @@ public final class CostLedger: ObservableObject {
     @Published private(set) var records: [Record]   // per-escalation token + $ accounting, all sessions
     // The totals below cover the records since the last startNewSession().
     var sessionTokens: Int
-    var sessionCostUSD: Decimal        // priced records only
+    var sessionCostUSD: Decimal        // priced records only, estimated ones included
     var unpricedRecordCount: Int       // records whose costUSD is nil
+    var estimatedRecordCount: Int      // records priced from estimatedUsage
     var sessionRecordCount: Int        // priced and unpriced
     func startNewSession()             // keeps records, restarts the totals
 
@@ -1940,7 +2166,8 @@ public final class CostLedger: ObservableObject {
     // Deprecated: the static form reads CostLedger.shared's prices.
     static func projectedCost(target: RemoteTarget, inputTokens: Int, maxOutput: Int) -> Decimal?
 
-    func record(provider: String, model: String? = nil, usage: TokenUsage?,
+    // estimatedUsage is priced only when usage is nil.
+    func record(provider: String, model: String? = nil, usage: TokenUsage?, estimatedUsage: TokenUsage? = nil,
                 origin: RemoteTarget.Origin, compressionRatio: Double?)
 
     struct Record: Identifiable, Sendable {
@@ -1948,9 +2175,11 @@ public final class CostLedger: ObservableObject {
         let provider: String
         let model: String?
         let isLocalNetwork: Bool
-        let usage: TokenUsage?
-        let costUSD: Decimal?          // nil: a cloud call with no price, or without both token counts
+        let usage: TokenUsage?         // reported by the provider
+        let estimatedUsage: TokenUsage? // conservative estimate used when usage is nil; not in sessionTokens
+        let costUSD: Decimal?          // nil: a cloud call with no price, or with neither usage nor estimate
         let compressionRatio: Double?
+        var isEstimated: Bool          // costUSD came from estimatedUsage
     }
 }
 
@@ -2004,8 +2233,10 @@ Also available: `ContextCompressor` (token-saving compression), `PIIRedactor`,
   `.costUnknown` too.
 - Only `routeAndEscalate` applies the cap. `escalate(to:)` sends without checking it.
 - `ResponseCache.shared` is in memory only (64 entries by default, cleared on relaunch). `HybridEscalator`
-  keys it on the provider, the model and the whole payload: system prompt, user message (compressed
-  context plus question) and `maxTokens`, and does not cache an empty or whitespace-only answer.
+  keys it on the provider's `cacheIdentity` (id plus endpoint for the bundled providers), the model, the
+  whole payload: system prompt, user message (compressed context plus question) and `maxTokens`, and a
+  temperature other than the default 0.7, and does not cache an empty or whitespace-only answer.
+  `lookup`/`insert` with `payload:` take an optional `temperature:` (nil keys as before).
   `lookup`/`insert` with `prompt:` key on that string alone.
 - `PIIRedactor` is pattern-based (emails, `sk-…`/`pk_…`/`rk-…` keys, bearer tokens, Slack and GitHub
   tokens, AWS access key IDs) and covers the context and the question only. The system prompt is

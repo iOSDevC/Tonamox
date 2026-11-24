@@ -29,7 +29,7 @@ Research notes, not a shipped feature: [Distributed inference](docs/guide/distri
 - **Agent orchestration (Architect-step escalation)** — `AgentCrew` (Extractor → Reviewer → Architect → Reporter) escalates the Architect's local draft to a bigger model when it looks weak, reusing the same compression + consent + cost machinery.
 - **On-device ML tools, not just LLMs** — Typed, availability-checked wrappers over Apple's ML frameworks, using models that ship with the OS and no extra dependencies: Vision (OCR lines, image classification, barcodes & QR, face detection), NaturalLanguage (language ID, named entities, sentiment, embeddings), SoundAnalysis (303 everyday sounds), a runner for **your own Core ML models**, and **on-device Create ML training** of text classifiers. `SystemToolRegistry` reports which built-in tools run on each device. See [On-device ML tools](#on-device-ml-tools).
 - **`tonamox` CLI & binaries** — A headless integration harness (`tonamox providers | tools | ask | ocr | ml | models | bench | imagegen`) plus build scripts for a release CLI and a drag-to-Applications `.dmg`. See [CLI & Binaries](#cli--binaries).
-- **Will this Hugging Face model run here?** — `ModelCompatibilityChecker` reads a repo's config and GGUF/safetensors headers and reports, for a device preset, whether Tonamox's pinned runtimes (mlx-swift-lm 3.31.3, llama.cpp b8851) can load it, why not, and its `models.json` entry. Also `tonamox models search|check|devices` and the Model Finder example app.
+- **Will this Hugging Face model run here?** — `ModelCompatibilityChecker` reads a repo's config and GGUF/safetensors headers and reports, for a device preset, whether Tonamox's pinned runtimes (mlx-swift-lm 3.31.3, llama.cpp b12407) can load it, why not, and its `models.json` entry. Also `tonamox models search|check|devices` and the Model Finder example app.
 - **Multilingual dense RAG (opt-in)** — `AutoEmbeddingProvider(embeddingModelAt:)` swaps TF-IDF for multilingual-e5-small via Core ML; the index re-embeds itself when the provider changes.
 - **On-device image generation** — `CoreMLDiffusionEngine` (TonamoxImageGen) runs Core ML Stable Diffusion 2.1 base on iPhone and Mac after a one-time ~1.07 GB download, or a Core ML SD 1.x/2.x folder from Hugging Face that `CoreMLDiffusionInspector` judges runnable; FLUX + LoRA via mflux on macOS. See [Image Generation](#image-generation).
 - **Stops when an iOS app backgrounds** — running MLX, llama.cpp and Core ML generations are cancelled and throw `GenerationInterrupted` with the text so far; an opt-in `DeviceConditions` guard stops on critical heat. See [Background Lifecycle](#background-lifecycle-ios).
@@ -41,7 +41,7 @@ Research notes, not a shipped feature: [Distributed inference](docs/guide/distri
 ## Requirements
 
 - **iOS 18+** / **macOS 15+** / **visionOS 2+**
-- **Xcode 16.3+** (Swift 6.1: the pinned LocalLLMClient 0.5.0 and mlx-swift-lm 3.31.3 declare tools-version 6.1); **Xcode 26** (iOS 26 / macOS 26 SDK) to build `TonamoxAppleIntelligence` and `TonamoxAgents`, which import FoundationModels; **Xcode 26.4+** (26.4 SDKs) to build `TonamoxImageGen` and the `tonamox` CLI, which use `ImagePlaygroundOptions`
+- **Xcode 16.3+** (Swift 6.1: the pinned LocalLLMClient 0.5.0 and mlx-swift-lm 3.31.3 declare tools-version 6.1); **Xcode 27** (iOS 27 / macOS 27 SDK) to build `TonamoxAppleIntelligence` and `TonamoxAgents`, which import FoundationModels and require iOS 27 / macOS 27 / visionOS 27 at run time; **Xcode 26.4+** (26.4 SDKs) to build `TonamoxImageGen` and the `tonamox` CLI, which use `ImagePlaygroundOptions`
 - **Swift 6.1+** (C++ interoperability mode enabled — required by llama.cpp)
 - `Increased Memory Limit` **and** `Extended Virtual Addressing` entitlements (both required for models > 500 MB — the second one is what makes mmap/layer-streaming actually work on iOS)
 
@@ -99,7 +99,7 @@ If your package imports `TonamoxCore`, add the C++ interop setting:
 | `TonamoxUI` | SwiftUI views and ViewModels for drop-in UI |
 | `TonamoxVoice` | Turn-based voice (on-device STT + TTS), 100% local |
 | `TonamoxDocs` | RAG document library — PDF, DOCX, text, images · TF-IDF or multilingual-e5-small embeddings |
-| `TonamoxAppleIntelligence` | Apple FoundationModels agents, tools & structured output (iOS 26 / macOS 26) |
+| `TonamoxAppleIntelligence` | Apple FoundationModels agents, tools & structured output (iOS 27 / macOS 27 / visionOS 27) |
 | `TonamoxAgents` | Reusable multi-agent orchestration (`AgentCrew`) with hybrid escalation of its Architect step |
 | `TonamoxImageGen` | Text-to-image: Core ML Stable Diffusion on device (iOS + macOS), built in or inspected and adopted from Hugging Face; FLUX + LoRA via mflux (macOS) |
 
@@ -253,7 +253,7 @@ model, reusing the same compression, consent, and cost machinery. Fail-closed: a
 | Area | Type(s) |
 |---|---|
 | Discovery | `LocalProviderDetector`, `LocalProviderStatus`, `LocalProviderModel` |
-| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / Magnitude / OpenAI), `AnthropicProvider` |
+| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / Magnitude / OpenAI / Gemini), `AnthropicProvider` |
 | Transport (internal) | SSE parsing (inside the providers' `stream(_:)`) and a remote `InferenceBackend` used by `HybridEscalator.escalate(to:…)` |
 | Routing | `EscalationRouter` (R1–R7), `EscalationPolicy`, `RoutingDecision`, `AskTargetResolver` (one target for a one-shot ask) |
 | Compression | `ContextCompressor` + pluggable `SelfInfoScorer` (default `HeuristicScorer`) |
@@ -471,7 +471,7 @@ handy as a reference and in CI. Build with `scripts/build-cli.sh` (or
 ```
 tonamox providers                      # detect Ollama / llama-server / Magnitude + models
 tonamox tools                          # list on-device ML tools by category, with availability
-tonamox ask "<prompt>" [--provider auto|local|openai|anthropic] [--model <id>] [--base-url <url>]
+tonamox ask "<prompt>" [--provider auto|local|openai|anthropic|gemini] [--model <id>] [--base-url <url>]
                                     # ask a bigger model: your llama-server/Ollama/Magnitude unless you name a cloud API
 tonamox ocr <image>                    # extract text via native Vision OCR
 tonamox ml <subcommand> …              # on-device ML: classify-image, barcodes, faces, ocr-lines, document,
@@ -484,7 +484,8 @@ tonamox bench --gguf <path> --server llama-server …  # which engine runs a mod
 
 `ask` sends to a running llama-server, else Ollama, else Magnitude, and never picks a cloud API on its own.
 `--provider openai` / `--provider anthropic` use `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (else the
-Keychain accounts `cloud.openai` / `cloud.anthropic`); `--base-url <url> --model <id>` targets any
+Keychain accounts `cloud.openai` / `cloud.anthropic`); `--provider gemini` uses `GOOGLE_API_KEY`, else
+`GEMINI_API_KEY`, else `cloud.gemini`; `--base-url <url> --model <id>` targets any
 other OpenAI-compatible server, with an optional `AURA_API_KEY`. All flags:
 [CLI guide](docs/guide/cli.md).
 
@@ -494,9 +495,9 @@ other OpenAI-compatible server, with an optional `AURA_API_KEY`. All flags:
 `build/TonamoxExample.dmg` with a drag-to-**Applications** alias. The app is
 development-signed (runs on this Mac); to distribute it, re-sign with a Developer ID
 identity and notarize (`xcrun notarytool submit … && xcrun stapler staple …`).
-Requires macOS 26 (AgentCrew).
+Requires macOS 26.2; the Agents tab (AgentCrew) needs macOS 27.
 
-TonamoxExample also runs on iPhone (iOS 18.6+); the Agents tab is Mac-only (macOS 26). Each section gets its own models:
+TonamoxExample also runs on iPhone (iOS 18.6+); the Agents tab is Mac-only (macOS 27). Each section gets its own models:
 **Chat** (text, images and documents in one conversation, with Text, Vision, OCR and Tools badges per model)
 downloads from the catalog or searches Hugging Face for chat models that run on the phone, **Voice** uses the
 downloaded text models, **Library** asks before downloading the two models it answers and reads images with, and
@@ -516,7 +517,7 @@ apps built from the Example's feature folders. Each app has its own shared schem
 | `TonamoxChat` | `io.iosdevc.TonamoxChat` | iOS, macOS | Chat and Voice (+ Settings on iOS) |
 | `TonamoxImage` | `io.iosdevc.TonamoxImage` | iOS, macOS | Image (+ Settings on iOS) |
 | `TonamoxLibrary` | `io.iosdevc.TonamoxLibrary` | iOS, macOS | Library, `DocsTab` (+ Settings on iOS) |
-| `TonamoxTerminal` | `io.iosdevc.TonamoxTerminal` | iOS only | terminal assistant: a model already on disk (or Apple Intelligence) proposes shell commands, and a paired Mac helper types them into a GNU `screen` session without pressing Enter |
+| `TonamoxTerminal` | `io.iosdevc.TonamoxTerminal` | iOS only | terminal assistant: a model on disk (or Apple Intelligence, or — only when you pick it and approve each turn — Claude, OpenAI or your own OpenAI-compatible server) proposes shell commands — the **Modelo** sheet also opens the Hugging Face search (downloads only on a tap) and the shared API-key settings — and a paired Mac helper types them into a GNU `screen` session without pressing Enter; or, per command, the iPhone types it as a Bluetooth keyboard into whichever window has focus, also without Enter (verified on hardware only for one probe line on macOS Español - ISO and one test line on macOS U.S.); or copies it for Universal Clipboard to paste on the Mac yourself, optionally wrapped to save its output to a private file (and, on macOS, copy it back), and **Pegar salida** brings pasted output to the model as sanitised, capped, delimited data (clipboard and capture unverified on hardware; see [limits](docs/guide/models.md#the-example-apps)); **Servidor web** serves the selected on-device model over the [local server](docs/guide/server.md#tonamoxterminal) on 127.0.0.1 or, chosen at each start, one Wi-Fi, hotspot or cable network without encryption, with browser pairing, API keys and opt-in output ingest (unverified on a device) |
 
 Each app calls `TonamoxSharedStorage.configure(appGroup: "group.io.iosdevc.tonamox")` first. Their iOS builds
 carry that App Group, so on one iPhone they share models, records, conversations, the document library and the

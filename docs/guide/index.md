@@ -19,7 +19,7 @@ train → ship → classify walkthrough, and how to run your own Core ML model.
 ## Will this Hugging Face model run?
 
 [Finding compatible models]({{ '/guide/models' | relative_url }}#finding-compatible-models) checks any Hugging
-Face repo against the runtimes Tonamox pins (mlx-swift-lm 3.31.3, llama.cpp b8851) and a device's memory
+Face repo against the runtimes Tonamox pins (mlx-swift-lm 3.31.3, llama.cpp b12407) and a device's memory
 budget without downloading the weights: from Swift (`ModelCompatibilityChecker`), the CLI (`tonamox models`) or
 the Model Finder example app.
 
@@ -73,7 +73,7 @@ schema ([Structured output]({{ '/api/core' | relative_url }}#structured-output))
 ## Ask a bigger model
 
 [Hybrid Inference]({{ '/guide/hybrid' | relative_url }}) escalates to your own llama-server/Ollama box or a
-bring-your-own-key Anthropic or OpenAI model; GitHub Models was retired. `routeAndEscalate` builds the request
+bring-your-own-key Anthropic, OpenAI or Gemini model; GitHub Models was retired. `routeAndEscalate` builds the request
 once, redacted per `EscalationPolicy.piiRedaction` (cloud targets by default) and compressed; when it asks your
 `ConsentGate`, the gate sees that exact payload, and approval sends it unchanged
 ([Consent sees the exact payload]({{ '/guide/hybrid' | relative_url }}#consent-sees-the-exact-payload)).

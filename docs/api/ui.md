@@ -135,6 +135,29 @@ ModelSection(
 
 ---
 
+## Keeping the screen awake
+
+`ScreenAwakeCoordinator.shared` (`@MainActor`) is the single writer of `UIApplication.isIdleTimerDisabled`: Auto-Lock
+stays off while any `ScreenAwakeReason` is held, so one feature releasing its reason does not turn the screen off
+under another. `setHeld(_:for:)` adds or removes a reason and writes the flag; `heldReasons` and `keepsScreenAwake`
+read the state. On macOS it only tracks the reasons. TonamoxUI declares `ScreenAwakeReason.download`; an app adds its
+own with `ScreenAwakeReason("name")`. Write the flag only through the coordinator, or the next `setHeld` overwrites it.
+
+```swift
+extension ScreenAwakeReason {
+    static let upload = ScreenAwakeReason("upload")
+}
+
+ScreenAwakeCoordinator.shared.setHeld(true, for: .upload)
+// ...
+ScreenAwakeCoordinator.shared.setHeld(false, for: .upload)
+```
+
+The flag keeps the screen from locking on its own; it does not keep an app running once the user locks the phone or
+leaves the app.
+
+---
+
 ## Hugging Face browser
 
 Search Hugging Face, see which repos run on a device and why, download one and try it. Six public types; none
@@ -143,10 +166,11 @@ brings its own navigation container, so they fit a `NavigationStack`, a `Navigat
 | Type | What it is |
 |------|------------|
 | `HFModelSearch` | `@MainActor @Observable` state: `init(query:devices:compatibleOnly:pipelineFilter:)` and `search()`. Fetched repo snapshots are cached; changing the device re-evaluates them offline. `pipelineFilter` (an `HFPipelineFilter` from TonamoxCore, such as `.chat`; `nil` by default) hides results whose declared pipeline it does not admit, and the list's controls name the pipelines it keeps. |
-| `HFModelSearchList` | `init(search:selection:)`. Search field, format filter (starts on GGUF on the Simulator), sort, device picker (only with more than one device), **Compatible only**, and a verdict badge per row. Selecting a row sets `selection` to its repo id. |
-| `HFRepoDetailView` | `init(repoID:search:)`. Fetches the repo if needed and shows the findings, per-quant fits, license and gating, plus a **Download** section for repos rated runnable: quant picker, size and free space, progress, Cancel/Resume, **Try it** (load, one 32-token reply, unload). A key button and the gated error open the token form. |
+| `HFModelSearchList` | `init(search:selection:)`. Search field, format filter (starts on GGUF on the Simulator), sort, device picker (only with more than one device), **Compatible only**, and a verdict badge per row (plus **Adapter, not a model** for an adapter repo). Selecting a row sets `selection` to its repo id. |
+| `HFRepoDetailView` | `init(repoID:search:)`. Fetches the repo if needed. Opens with one verdict card: **Works on this iPhone** with the recommended version (quantization), its download size and the memory it needs against the device's limit (**Tight fit** or **Runs slowly** instead when that version only fits marginally or by layer streaming, with the fit caveat); **Too large** with the smallest version and how far it is over; **Not a standalone model** for an adapter (LoRA), naming the base, with no download (**Probably an adapter, not a model** when only a file name says so); or the blocking finding. Then a **Download** section for repos rated runnable (quant picker, size and free space, progress, Cancel/Resume, **Try it**: load, one 32-token reply, unload), the versions smallest first (plain-language hint, size, memory bar, one **Recommended** badge, dimmed rows that cannot load with the reason; every row is dimmed when a non-memory blocker rules the repo out), files that are not versions (adapters, projectors, importance matrices), then the technical findings collapsed, device, model and license. A key button and the gated error open the token form. |
 | `DownloadedModelsList` | `init()`. Everything on disk under the model storage root and the Caches folder earlier versions used, finished or paused, with Try it, Resume, Cancel and Delete (unload every model reading the file, files, record, registry), plus the keep-awake switch. Try it and Resume are off for a file whose size is unknown (no record or catalog entry). A paused `.partial` whose finished file is already on disk (left in Caches by an older build) shows as **Leftover**: no Resume, and Delete removes only that partial. Sets the title "Downloads". |
-| `ModelDownloadCenter` | `ModelDownloadCenter.shared`: the single running download. `revision` changes whenever models are downloaded, deleted or registered, here or through a download placeholder (`OnDemandDownloads`); `keepsScreenAwake`; `isBusy`. `isDownloading(_:)` says whether this center, a `ModelSection` row or a download placeholder is writing a model's file; `delete(_:)` unloads every model reading that file, removes its finished and partial files, forgets its record and unregisters a model added from search (catalog models stay registered), and throws while a download writes the file. It records each download started from a search result with `DownloadRecords` and registers it when it finishes; resuming a catalog file does not record it (see [Keeping downloads across launches]({{ '/guide/models' | relative_url }}#keeping-downloads-across-launches)). `reloadSharedState()` re-reads `DownloadRecords.standard`: it registers the records that appeared, unregisters the models it listed whose record is gone (another app of the group deleted them), and bumps `revision`. The center calls it on every `TonamoxSharedStorage.didChangeNotification` about `.models`; call it yourself when the app becomes active, since a suspended app misses those signals. |
+| `ModelDownloadCenter` | `ModelDownloadCenter.shared`: the single running download. `revision` changes whenever models are downloaded, deleted or registered, here or through a download placeholder (`OnDemandDownloads`); `keepsScreenAwake` (while a download runs it holds `ScreenAwakeReason.download` in [`ScreenAwakeCoordinator`](#keeping-the-screen-awake); changing it mid-download applies at once); `isBusy`. `isDownloading(_:)` says whether this center, a `ModelSection` row or a download placeholder is writing a model's file; `delete(_:)` unloads every model reading that file, removes its finished and partial files, forgets its record and unregisters a model added from search (catalog models stay registered), and throws while a download writes the file. It records each download started from a search result with `DownloadRecords` and registers it when it finishes; resuming a catalog file does not record it (see [Keeping downloads across launches]({{ '/guide/models' | relative_url }}#keeping-downloads-across-launches)). `reloadSharedState()` re-reads `DownloadRecords.standard`: it registers the records that appeared, unregisters the models it listed whose record is gone (another app of the group deleted them), and bumps `revision`. The center calls it on every `TonamoxSharedStorage.didChangeNotification` about `.models`; call it yourself when the app becomes active, since a suspended app misses those signals. |
+| `EnvironmentValues.hfRepoCaution` | An `HFRepoCaution`, default `.none`. `HFRepoCaution(id:_:)` wraps a `@Sendable (_ repoID: String, _ tags: [String]) -> String?` closure and compares by `id`, so give each rule its own stable id. When it returns text, `HFModelSearchList` shows it under the repo id of that row (VoiceOver reads it last) and `HFRepoDetailView` under the repo id at the top, with an orange shield, verbatim. The detail page passes the tags of the search result it came from (none when the repo is not in the results). TonamoxUI applies no rule of its own; TonamoxTerminal sets it to mark models whose safety training was removed. |
 | `HuggingFaceTokenSection` | `init()`. Two `Form` sections that save, show and remove the read token for gated repos (`KeychainDownloadAuth`). Its note says the token stays in this device's Keychain, unsynced, and that apps sharing Tonamox storage through an App Group read the same token. |
 
 ```swift
@@ -185,6 +209,13 @@ struct FindModelsSplit: View {
     }
 }
 
+// A caution of the app's own on some repos; set outside navigationDestination so the repo page gets it too:
+HFModelSearchList(search: search, selection: $selection)
+    .navigationDestination(item: $selection) { HFRepoDetailView(repoID: $0, search: search) }
+    .environment(\.hfRepoCaution, HFRepoCaution(id: "myapp.adult") { _, tags in
+        tags.contains("not-for-all-audiences") ? "Adult content" : nil
+    })
+
 // Elsewhere:
 NavigationStack { DownloadedModelsList() }
 Form { HuggingFaceTokenSection() }
@@ -220,3 +251,15 @@ struct MyApp: App {
 Limits: one download at a time; no background downloads (about 30 s of background time, then Resume continues from
 the partial file); `ModelDownloadCenter` uses `UIApplication.shared` on iOS, so it is not
 app-extension-safe; on the Simulator MLX can't run and "this device" is the Mac's memory.
+
+## Localization
+
+TonamoxUI ships English (the development language) and Spanish in `Sources/TonamoxUI/Localizable.xcstrings`,
+compiled by both `swift build` and Xcode; the package declares `defaultLocalization: "en"`. The language follows the
+host app: iOS shows a framework in the app's own localization, so an app whose only language is Spanish (development
+region `es`, as TonamoxTerminal) gets Spanish screens, and an English-only app gets English even on a Spanish
+device. List both languages in your app (an `es.lproj` or `CFBundleLocalizations`) to follow the user's setting.
+
+Not translated: sentences that TonamoxCore builds (a repo's headline, findings and caveats, preset descriptions,
+download error descriptions) and the `ModelDownloadPlaceholder` view, which stay English; prompts sent to a model
+(Try it's question, the Vision tab's default prompt); model and repo names.

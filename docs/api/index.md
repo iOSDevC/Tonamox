@@ -19,5 +19,5 @@ Other modules are covered elsewhere:
 - TonamoxAgents (`AgentCrew`): the [Hybrid Inference]({{ '/guide/hybrid' | relative_url }}#per-step-escalation-agent-orchestration) guide.
 - TonamoxAppleIntelligence is not documented on this site.
 
-TonamoxAgents and TonamoxAppleIntelligence import `FoundationModels`, so they build only with the Xcode 26 SDK.
+TonamoxAgents and TonamoxAppleIntelligence import `FoundationModels`, so they build only with the Xcode 27 SDK; their APIs require iOS 27, macOS 27 or visionOS 27.
 TonamoxImageGen uses `ImagePlaygroundOptions`, so it builds only with the 26.4 SDKs (Xcode 26.4).

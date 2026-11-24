@@ -3,7 +3,7 @@ layout: docs
 title: Hybrid Inference
 parent: Guide
 nav_order: 2.5
-description: "Local-first inference with optional, consent-gated escalation to a bigger local or cloud model — llama-server/Ollama/Magnitude, Anthropic, or OpenAI — with token-saving compression and cost accounting."
+description: "Local-first inference with optional, consent-gated escalation to a bigger local or cloud model — llama-server/Ollama/Magnitude, Anthropic, OpenAI, or Gemini — with token-saving compression and cost accounting."
 ---
 
 # Hybrid Inference (local + remote)
@@ -21,7 +21,7 @@ description: "Local-first inference with optional, consent-gated escalation to a
 
 Tonamox is **on-device first**. The hybrid line adds an *optional*, **consent-gated**
 path to escalate a request to a more powerful model — your own `llama-server`/Ollama box
-on the LAN, or a cloud provider (Anthropic, OpenAI) — only when the local
+on the LAN, or a cloud provider (Anthropic, OpenAI, Gemini) — only when the local
 model isn't enough.
 
 {: .note }
@@ -173,7 +173,7 @@ raises the bar for the latter).
   same reason while the session holds unpriced calls (`unpricedRecordCount > 0`), because the
   session's spend is then unknown.
 - Only the first candidate is tried: a llama-server, Ollama or Magnitude on this machine if one is running,
-  otherwise the first cloud key found (Anthropic, then OpenAI), or the first of the `targets:` you
+  otherwise the first cloud key found (Anthropic, then OpenAI, then Gemini), or the first of the `targets:` you
   pass. An error from it, such as HTTP 429, is thrown to the caller; there is no fall-through to the
   next target.
 
@@ -199,14 +199,54 @@ let result = try await escalator.escalate(payload, to: target)
 `escalate(to:context:question:…)` is `preparePayload` with a fixed `keepRatio` of 0.5 followed by
 `escalate(_:to:)`; it checks no policy, consent or cost cap.
 
+### A send the user asked for
+
+`routeAndEscalate` picks its own target and stays local unless a trigger fires, so it does not fit a
+button such as "Ask a bigger model" or an engine the user chose. Decide those with
+`EscalationRouter.decideUserRequested`, priced from the payload you will send:
+
+```swift
+let ledger = CostLedger.shared
+let payload = HybridEscalator(ledger: ledger).preparePayload(
+    for: target, systemPrompt: system, context: "", question: prompt,
+    keepRatio: policy.keepRatio, redactPII: policy.redactsPII(for: target))
+let decision = EscalationRouter.decideUserRequested(RoutingInput(
+    policy: policy, hasCandidateTarget: true, candidateIsCloud: !target.isLocalNetwork,
+    online: NetworkMonitor.shared.isOnline,
+    projectedCostUSD: ledger.projectedCost(
+        target: target, inputTokens: payload.estimatedInputTokens, maxOutput: payload.maxTokens),
+    sessionSpentUSD: ledger.sessionCostUSD, unpricedRecordCount: ledger.unpricedRecordCount))
+// .refuse(_): send nothing. .ask(reason:): show the payload and ask. .send: escalate(payload, to: target).
+```
+
+In order: mode Off refuses; a cloud target refuses without `allowCloud` (a target you picked yourself was
+never filtered by `candidateTargets`) or without a network; a priced request that would cross
+`costCapUSDPerSession` refuses (exactly at the cap is allowed; a $0 LAN request is never capped); an
+unpriced cloud target, or a session with unpriced records, asks with `.costUnknown`; otherwise
+"Ask each time" asks and "Auto (LAN)" asks for cloud and sends to the LAN. The Example apps wrap this,
+the consent sheet and the send in `RemoteEscalation` (`Sources/TonamoxExample/CommonUI`).
+
 ## Cloud targets (BYOK)
 
 `HybridEscalator.cloudTargets(allowCloud:)` builds cloud targets from Keychain keys:
 `cloud.anthropic` (`AnthropicProvider`, default model `RemoteTarget.defaultAnthropicModel`,
-`claude-sonnet-4-5`) and `cloud.openai` (OpenAI, `RemoteTarget.defaultOpenAIModel`, `gpt-4o`).
+`claude-sonnet-4-5`), `cloud.openai` (OpenAI, `RemoteTarget.defaultOpenAIModel`, `gpt-4o`) and `cloud.gemini`
+(`RemoteTarget.gemini(apiKey:model:)`, `RemoteTarget.defaultGeminiModel`, `gemini-3.5-flash-lite`; pass
+`geminiModel:` for another), in that order, each only when its key is stored.
 Keys are stored in the Keychain, never in source, files, or logs. Save a key once (e.g. from a
 settings screen): `try KeychainStore.save(key, for: "cloud.openai")`.
 Works from iOS, macOS, and visionOS.
+
+**Gemini** goes through Google's OpenAI-compatible endpoint
+(`https://generativelanguage.googleapis.com/v1beta/openai/`, still beta) with the key as a Bearer token. It sends
+no `temperature` (Google deprecated it on 2026-07-21), its context length is left unknown (the compressor then
+budgets for 8192 tokens), and it has no built-in price, so the router offers it with `.costUnknown`. Its
+`retentionNote` states the free tier's terms: Google may use prompts and responses to improve its products and
+human reviewers may read them, and apps offered in the EEA, the UK or Switzerland may use only paid keys. When
+Gemini reports usage in every streamed chunk, the last complete report counts, never a sum. An error event in the
+stream (`data: {"error":{"code","message"}}`, as Gemini sends for quota and rate limits) fails the call with
+`TonamoxError.remoteFailed`, so a partial answer is never cached. GitHub Copilot is not a
+provider: it has no official OpenAI-compatible chat API (its SDK runs agent sessions only).
 
 **Sharing keys between your apps.** On iOS (and visionOS), once `TonamoxSharedStorage.configure(appGroup:)` has
 applied an App Group (see
@@ -246,9 +286,9 @@ Keychain reader and the detected local providers, so it does no I/O of its own.
 import TonamoxCore
 
 let target = try AskTargetResolver.resolve(
-    .auto,                                        // .auto / .local / .openAI / .anthropic
+    .auto,                                        // .auto / .local / .openAI / .anthropic / .gemini
     environment: ProcessInfo.processInfo.environment,
-    readKey: KeychainStore.read(for:),            // read only for .openAI / .anthropic
+    readKey: KeychainStore.read(for:),            // read only for .openAI / .anthropic / .gemini
     localProviders: await LocalProviderDetector.detectAll())
 let result = try await HybridEscalator().escalate(
     to: target, context: "", question: prompt, redactPII: !target.isLocalNetwork)
@@ -256,8 +296,9 @@ let result = try await HybridEscalator().escalate(
 
 Without a `baseURL:`, `.auto` and `.local` return your llama-server, else Ollama, else Magnitude,
 and never a cloud target; they throw `AskTargetResolver.Failure.noLocalProvider` when none runs.
-`.openAI` / `.anthropic` take the key from `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, else the Keychain, and throw
-`.missingAPIKey` without one. `baseURL:` (with `model:`) targets any OpenAI-compatible server;
+`.openAI` / `.anthropic` take the key from `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, else the Keychain; `.gemini`
+from `GOOGLE_API_KEY`, else `GEMINI_API_KEY`, else the Keychain `cloud.gemini`. Each throws `.missingAPIKey`
+without one. `baseURL:` (with `model:`) targets any OpenAI-compatible server;
 a loopback or private-network host gets the origin `.localNetwork(.llamaServer)`, any other
 host `.cloud`. Each `Failure` has an `errorDescription` that says what to do next.
 
@@ -270,8 +311,8 @@ consent, and cost machinery, and redacts per the policy's `piiRedaction` (cloud 
 default). Fail-closed: any error or a *stay-local* decision keeps the local draft. It passes no
 `targets:`, so it escalates only to a llama-server, Ollama or Magnitude on the same machine, or to a cloud key.
 
-The reusable pipeline lives in the **`TonamoxAgents`** module (requires iOS 26 / macOS 26 and
-the Xcode 26 SDK):
+The reusable pipeline lives in the **`TonamoxAgents`** module (requires iOS 27 / macOS 27 / visionOS 27 and
+the Xcode 27 SDK):
 
 ```swift
 import TonamoxAgents
@@ -280,6 +321,16 @@ let crew = AgentCrew(store: .shared, library: .shared)
 // Inject the escalation policy + consent gate; the Architect step escalates when weak.
 await crew.run(topic: "Q3 security posture", policy: policy, consent: myConsentGate)
 ```
+
+The agents call three read-only FoundationModels tools: `queryDocuments` (the Extractor and Reviewer),
+`readAgentMemory` (this run's earlier outputs) and `recallPastTasks` (turns of earlier `AgentCrew:` runs).
+`queryDocuments` uses `DocumentLibrary.search(_:topK:)`, so it needs the library opened and configured with an
+embedding provider but no loaded GGUF or MLX model: Apple Intelligence is the only model in memory. A tool asks for
+1 to 4 results and the count is clamped to that range. A tool's content is capped at 1,200 Unicode scalars (about
+1,500 with the framing): each listed result, with its document title or task topic cut to 60, gets an equal share so
+all of them show, and anything still longer is cut in the middle. The content is framed as untrusted data (escapes,
+invisible characters and variation selectors removed, random boundary lines). Each crew step gets a fixed tool set
+(`CrewToolbox`).
 
 ## Privacy & cost
 
@@ -304,18 +355,23 @@ await crew.run(topic: "Q3 security posture", policy: policy, consent: myConsentG
 - **`CostLedger`** records per-escalation token usage and cost. Local-network targets cost exactly
   $0. Built-in prices cover only the default cloud models, `claude-sonnet-4-5` on `cloud.anthropic`
   ($3 in / $15 out per 1M tokens) and `gpt-4o` on `cloud.openai` ($2.50 / $10), as approximate list
-  prices. Every other cloud model (another Anthropic or OpenAI model, any custom
+  prices. Every other cloud model (another Anthropic or OpenAI model, every Gemini model, any custom
   `OpenAICompatibleProvider`, a public `AskTargetResolver` base URL, whose provider id is
   `custom.<host>` or `custom.<host>:<port>`) is unpriced: its record has `costUSD == nil`, as does
   any cloud call whose provider reports no usage, or only one of the two token counts. A call that
   throws after it streamed text or reasoning (a cancel, a dropped stream) is still recorded, with the
-  usage the provider reported before failing or else `nil`; a call that fails before any output is not.
+  usage the provider reported before failing; without one it is recorded at a conservative estimate
+  (`estimatedUsage`: the payload's estimated input plus `maxTokens`, `isEstimated == true`), priced
+  when the target is, so the cost cap counts it; the router still treats it like an unpriced record
+  (the next cloud send asks with `.costUnknown`). A call that fails before any output is not recorded.
   `sessionCostUSD` sums the priced records since the session started, `unpricedRecordCount` counts
   the others and `sessionRecordCount` counts both; `startNewSession()` restarts them and keeps
   `records`. The Example app's Hybrid settings show these totals and a **Start new session** button.
 - **`ResponseCache`** avoids paying twice for a repeated request. `HybridEscalator` keys it on
-  provider id, model id and the whole payload: the system prompt, the user message (context +
-  question) and `maxTokens`. It is held in memory (64 entries, FIFO, cleared on relaunch). An empty
+  the provider's `cacheIdentity` (for `OpenAICompatibleProvider` and `AnthropicProvider`, the id plus
+  the base URL's scheme, host, port and path, never the key), model id, the whole payload: the system
+  prompt, the user message (context + question) and `maxTokens`, and a non-default `temperature`.
+  Pass `temperature:` to `escalate` or `routeAndEscalate` to sample at other than 0.7. It is held in memory (64 entries, FIFO, cleared on relaunch). An empty
   or whitespace-only answer, such as a reasoning model's that spent `maxTokens` thinking, is not
   cached, so the same request is sent again.
 
@@ -341,7 +397,7 @@ let escalator = HybridEscalator(ledger: ledger)
 | Area | Type(s) |
 |---|---|
 | Discovery | `LocalProviderDetector`, `LocalProviderStatus` |
-| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / Magnitude / OpenAI), `AnthropicProvider` |
+| Providers | `RemoteLLMProvider`, `OpenAICompatibleProvider` (llama-server / Ollama / Magnitude / OpenAI / Gemini), `AnthropicProvider` |
 | Transport | internal (`RemoteBackend` adapts a `RemoteLLMProvider` to `InferenceBackend`; not public API) |
 | Routing | `EscalationRouter` (R1–R7), `EscalationPolicy`, `RoutingDecision`, `HybridEscalator`, `AskTargetResolver` |
 | Compression | `ContextCompressor` + pluggable `SelfInfoScorer` |

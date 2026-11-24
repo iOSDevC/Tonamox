@@ -65,6 +65,9 @@ print(answer.text)
 for source in answer.sources {
     print("[\(source.documentTitle) p.\(source.pageNumber)] \(source.excerpt)")
 }
+
+// Or retrieve the same passages without generating an answer (the LLM is never called or loaded)
+let passages = try await library.search("total contract value", topK: 3)
 ```
 
 {: .note }
