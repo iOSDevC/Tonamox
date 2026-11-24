@@ -16,6 +16,9 @@ struct ChatAppRoot: View {
             Tab("Settings", systemImage: "gearshape") {
                 HybridSettingsView(isEmbedded: true)
             }
+            Tab("Licencias", systemImage: "doc.text") {
+                OpenSourceNoticesTab()
+            }
             #endif
         }
         #if os(iOS)

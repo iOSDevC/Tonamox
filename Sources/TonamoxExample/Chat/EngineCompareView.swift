@@ -1,9 +1,6 @@
 import SwiftUI
 import TonamoxCore
 import TonamoxUI
-#if os(iOS)
-import UIKit
-#endif
 
 // MARK: - EngineCompareView
 //
@@ -606,8 +603,11 @@ final class EngineComparison {
 
     /// The app unloads every model when it goes to the background, which would fail the run in progress.
     private func keepScreenAwake(_ awake: Bool) {
-        #if os(iOS)
-        UIApplication.shared.isIdleTimerDisabled = awake
-        #endif
+        ScreenAwakeCoordinator.shared.setHeld(awake, for: .compare)
     }
+}
+
+extension ScreenAwakeReason {
+    /// A benchmark runs.
+    static let compare = ScreenAwakeReason("compare")
 }

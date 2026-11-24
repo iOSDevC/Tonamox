@@ -17,8 +17,8 @@ final class HybridSettings: ObservableObject {
 }
 
 /// A ``ConsentGate`` that presents a SwiftUI sheet and suspends until the user
-/// approves or declines. Fail-closed: if resolution never comes, the awaiting
-/// call simply never proceeds (the caller keeps the local answer).
+/// approves or declines. Fail-closed: one request at a time (a concurrent one is
+/// declined), and cancelling the awaiting task declines its request.
 @MainActor
 final class UIConsentGate: ObservableObject, ConsentGate {
     struct Request: Identifiable {
@@ -29,12 +29,17 @@ final class UIConsentGate: ObservableObject, ConsentGate {
         let cost: Decimal?
         /// Why it was offered, with the session's spend and cap; nil when the caller passed only a cost.
         let offer: EscalationOffer?
+        /// Caller-written lines shown above the payload (what the request contains, what it does not).
+        var disclosures: [String] = []
 
         /// The exact request sent on approval, when the offer carries it.
         var payload: EscalationPayload? { offer?.payload }
     }
 
     @Published var pending: Request?
+    private var activeRequestID: UUID?
+    /// A request is awaiting an answer; a new one would be declined.
+    var hasActiveRequest: Bool { activeRequestID != nil }
     private var continuation: CheckedContinuation<Bool, Never>?
 
     func requestConsent(
@@ -51,20 +56,47 @@ final class UIConsentGate: ObservableObject, ConsentGate {
         preview: CompressionResult,
         offer: EscalationOffer
     ) async -> Bool {
-        await present(Request(target: target, preview: preview, cost: offer.projectedCostUSD, offer: offer))
+        await requestConsent(target: target, preview: preview, offer: offer, disclosures: [])
+    }
+
+    func requestConsent(
+        target: RemoteTarget,
+        preview: CompressionResult,
+        offer: EscalationOffer,
+        disclosures: [String]
+    ) async -> Bool {
+        await present(Request(
+            target: target, preview: preview, cost: offer.projectedCostUSD, offer: offer, disclosures: disclosures))
     }
 
     private func present(_ request: Request) async -> Bool {
-        await withCheckedContinuation { cont in
-            self.continuation = cont
-            self.pending = request
+        guard activeRequestID == nil, !Task.isCancelled else { return false }
+        let id = request.id
+        activeRequestID = id
+        return await withTaskCancellationHandler {
+            // The body runs synchronously up to the first suspension, so the continuation is set before any
+            // cancellation hop can look for it.
+            await withCheckedContinuation { cont in
+                self.continuation = cont
+                self.pending = request
+            }
+        } onCancel: {
+            Task { @MainActor in self.resolve(false, requestID: id) }
         }
     }
 
-    /// Called by the consent sheet's buttons.
-    func resolve(_ approved: Bool) {
+    /// Called by the consent sheet with the id of the request it shows; a stale id is ignored.
+    func resolve(_ approved: Bool, requestID: UUID) {
+        guard requestID == activeRequestID, let continuation else { return }
         pending = nil
-        continuation?.resume(returning: approved)
-        continuation = nil
+        activeRequestID = nil
+        self.continuation = nil
+        continuation.resume(returning: approved)
+    }
+
+    /// Declines the request on screen, if any (app sent to the background, a stop button).
+    func declinePending() {
+        guard let activeRequestID else { return }
+        resolve(false, requestID: activeRequestID)
     }
 }

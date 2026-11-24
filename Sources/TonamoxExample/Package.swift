@@ -11,17 +11,17 @@ import PackageDescription
 //
 // Four-agent pipeline: Extractor → Reviewer → Architect → Reporter
 // Shared state via ConversationStore (SQLite blackboard between agents)
-// Document grounding via DocumentQueryTool → DocumentLibrary.ask()
+// Document grounding via DocumentQueryTool → DocumentLibrary.search() (retrieval only)
 // Final export as JSONL.GZ via DocumentExporter
 //
 // Requirements:
-//   - iOS 26+ / macOS 26+
+//   - iOS 27+ / macOS 27+ / visionOS 27+
 //   - Apple Intelligence enabled on device
-//   - Xcode 26+
+//   - Xcode 27+
 //
 // Setup:
 //   1. Place this package next to Tonamox/  (sibling directory)
-//   2. Open Package.swift in Xcode 26
+//   2. Open Package.swift in Xcode 27
 //   3. Select AgentCrewExample scheme
 //   4. Run on iPhone with Apple Intelligence enabled
 

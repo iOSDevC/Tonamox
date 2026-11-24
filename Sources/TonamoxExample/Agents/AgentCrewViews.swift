@@ -6,7 +6,7 @@ import TonamoxAgents
 
 // MARK: - PipelineTab
 
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 struct PipelineTab: View {
     @EnvironmentObject var appState: AppState
     @State private var topic        = ""

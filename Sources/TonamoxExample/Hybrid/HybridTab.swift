@@ -91,7 +91,7 @@ struct HybridTab: View {
             Text("Local-first: prefers your own llama-server / Ollama / Magnitude, then cloud (if allowed and a key "
                  + "is set). "
                  + "Context is compressed to save tokens; cloud sends redact obvious secrets by default "
-                 + "and ask consent first, showing the exact payload.")
+                 + "and ask consent first, showing the exact payload. Over the session cost cap nothing is sent.")
         }
     }
 
@@ -103,31 +103,14 @@ struct HybridTab: View {
         let policy = HybridSettings.shared.policy
         let candidates = await HybridEscalator.candidateTargets(policy: policy)
         guard let target = candidates.first else {
-            errorText = "No provider available. Start Ollama/llama-server, or add an Anthropic or OpenAI key in Settings (⚙) and allow cloud."
+            errorText = "No provider available. Start Ollama/llama-server, or add an Anthropic or OpenAI key in Settings (⚙) (a Gemini key saved in TonamoxTerminal also counts) and allow cloud."
             return
         }
 
-        // Built once: the consent sheet shows exactly what is sent.
-        let escalator = HybridEscalator()
-        let payload = escalator.preparePayload(
-            for: target, context: "", question: prompt, maxTokens: 512,
-            keepRatio: policy.keepRatio, redactPII: policy.redactsPII(for: target))
-
-        // Cloud targets require explicit consent; LAN is trusted.
-        if !target.isLocalNetwork {
-            let cost = ledger.projectedCost(
-                target: target, inputTokens: payload.estimatedInputTokens, maxOutput: payload.maxTokens)
-            let offer = EscalationOffer(
-                reason: .userRequested, projectedCostUSD: cost,
-                sessionSpentUSD: ledger.sessionCostUSD, unpricedRecordCount: ledger.unpricedRecordCount,
-                costCapUSD: policy.costCapUSDPerSession, payload: payload)
-            let approved = await HybridSettings.shared.consent.requestConsent(
-                target: target, preview: payload.compression, offer: offer)
-            guard approved else { errorText = "Escalation declined — keeping local."; return }
-        }
-
+        // Policy, cost cap and consent are applied there; the consent sheet shows exactly what is sent.
         do {
-            let result = try await escalator.escalate(payload, to: target) { response = $0 }
+            let result = try await RemoteEscalation.run(
+                target: target, systemPrompt: nil, question: prompt, maxTokens: 512) { response = $0 }
             var r = "via \(result.providerName) · \(target.modelID)"
             if let u = result.usage { r += " · \(u.inputTokens) in / \(u.outputTokens) out" }
             let c = result.compression
@@ -137,6 +120,10 @@ struct HybridTab: View {
             if result.redactedPIICount > 0 { r += " · redacted \(result.redactedPIICount) PII" }
             if result.fromCache { r += " · (cached, $0)" }
             receipt = r
+        } catch let failure as RemoteEscalation.Failure {
+            errorText = RemoteEscalation.englishText(for: failure)
+        } catch is CancellationError {
+            errorText = nil
         } catch {
             errorText = error.localizedDescription
         }

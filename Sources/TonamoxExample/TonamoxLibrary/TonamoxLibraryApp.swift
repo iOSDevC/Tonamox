@@ -25,7 +25,7 @@ struct TonamoxLibraryApp: App {
 
 #if os(macOS)
         Settings {
-            HybridSettingsView(isEmbedded: true)
+            AppSettingsWindow()
         }
 #endif
     }

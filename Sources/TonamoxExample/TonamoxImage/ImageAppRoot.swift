@@ -21,6 +21,9 @@ struct ImageAppRoot: View {
             Tab("Settings", systemImage: "gearshape") {
                 HybridSettingsView(isEmbedded: true)
             }
+            Tab("Licencias", systemImage: "doc.text") {
+                OpenSourceNoticesTab()
+            }
         }
         .background(KeyboardDismissOnTap())
         #else

@@ -179,30 +179,12 @@ struct DomainTestView: View {
             return
         }
 
-        // Built once: the consent sheet shows exactly what is sent.
-        let escalator = HybridEscalator()
-        let payload = escalator.preparePayload(
-            for: target, systemPrompt: domain.testSystemPrompt, context: "", question: prompt,
-            maxTokens: 512, keepRatio: policy.keepRatio, redactPII: policy.redactsPII(for: target))
-
-        // Cloud targets require per-conversation consent (LAN is trusted).
-        if !target.isLocalNetwork {
-            let cost = CostLedger.shared.projectedCost(
-                target: target, inputTokens: payload.estimatedInputTokens, maxOutput: payload.maxTokens)
-            let offer = EscalationOffer(
-                reason: .userRequested, projectedCostUSD: cost,
-                sessionSpentUSD: CostLedger.shared.sessionCostUSD, unpricedRecordCount: CostLedger.shared.unpricedRecordCount,
-                costCapUSD: policy.costCapUSDPerSession, payload: payload)
-            let approved = await HybridSettings.shared.consent.requestConsent(
-                target: target, preview: payload.compression, offer: offer)
-            guard approved else {
-                errorText = "Escalation declined — keeping local."
-                return
-            }
-        }
         status = "Asking \(target.provider.displayName)…"
+        // Policy, cost cap and consent are applied there; the consent sheet shows exactly what is sent.
         do {
-            let result = try await escalator.escalate(payload, to: target) { response = $0 }
+            let result = try await RemoteEscalation.run(
+                target: target, systemPrompt: domain.testSystemPrompt, question: prompt, maxTokens: 512
+            ) { response = $0 }
 
             var receipt = "via \(result.providerName) · \(target.modelID)"
             if let usage = result.usage {
@@ -219,6 +201,10 @@ struct DomainTestView: View {
                 receipt += " · (cached, $0)"
             }
             remoteReceipt = receipt
+        } catch let failure as RemoteEscalation.Failure {
+            errorText = RemoteEscalation.englishText(for: failure)
+        } catch is CancellationError {
+            errorText = nil
         } catch {
             errorText = error.localizedDescription
         }

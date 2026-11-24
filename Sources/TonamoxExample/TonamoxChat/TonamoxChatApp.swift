@@ -25,7 +25,7 @@ struct TonamoxChatApp: App {
 
 #if os(macOS)
         Settings {
-            HybridSettingsView(isEmbedded: true)
+            AppSettingsWindow()
         }
 #endif
     }

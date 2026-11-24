@@ -13,13 +13,18 @@ struct HybridSettingsView: View {
 
     /// When embedded in a tab or the macOS Settings scene, hide the sheet's "Done" button.
     var isEmbedded = false
+    /// Replaces the Claude/OpenAI key rows; TonamoxTerminal puts a link to its own provider form there.
+    var cloudKeys: AnyView?
 
     @State private var anthropicKey = ""
     @State private var openAIKey = ""
     @State private var hasRetiredGitHubToken = false
+    @State private var hasGeminiKey = false
 
     /// GitHub Models was retired on 2026-07-30; Tonamox no longer reads this account.
     private static let retiredGitHubModelsAccount = "cloud.github-models"
+    /// Saved only from TonamoxTerminal's provider form, but the App Group keychain makes it a target in every app.
+    private static let geminiAccount = "cloud.gemini"
 
     private var costCap: Binding<Double> {
         Binding(
@@ -52,16 +57,13 @@ struct HybridSettingsView: View {
                     }
                 }
 
-                Section {
-                    keyRow(title: "Anthropic (Claude)", account: "cloud.anthropic", field: $anthropicKey)
-                    keyRow(title: "OpenAI", account: "cloud.openai", field: $openAIKey)
+                if let cloudKeys {
+                    cloudKeys
                     if hasRetiredGitHubToken {
-                        retiredGitHubModelsRow
+                        Section { retiredGitHubModelsRow }
                     }
-                } header: {
-                    Text("Cloud API keys (BYOK)")
-                } footer: {
-                    Text("Keys are stored in the Keychain (this device only) — never in code, files, or logs.")
+                } else {
+                    defaultCloudKeys
                 }
 
                 HuggingFaceTokenSection()
@@ -88,13 +90,47 @@ struct HybridSettingsView: View {
         #if os(macOS)
         .frame(minWidth: 460, minHeight: 520)
         #endif
-        .onAppear { hasRetiredGitHubToken = KeychainStore.hasKey(for: Self.retiredGitHubModelsAccount) }
+        .onAppear {
+            hasRetiredGitHubToken = KeychainStore.hasKey(for: Self.retiredGitHubModelsAccount)
+            hasGeminiKey = KeychainStore.hasKey(for: Self.geminiAccount)
+        }
+    }
+
+    private var defaultCloudKeys: some View {
+        Section {
+            keyRow(title: "Anthropic (Claude)", account: "cloud.anthropic", field: $anthropicKey)
+            keyRow(title: "OpenAI", account: "cloud.openai", field: $openAIKey)
+            if hasGeminiKey {
+                geminiRow
+            }
+            if hasRetiredGitHubToken {
+                retiredGitHubModelsRow
+            }
+        } header: {
+            Text("Cloud API keys (BYOK)")
+        } footer: {
+            Text("Keys are stored in the Keychain (this device only) — never in code, files, or logs.")
+        }
     }
 
     private var sessionCostText: String {
         let priced = String(format: "$%.4f", NSDecimalNumber(decimal: ledger.sessionCostUSD).doubleValue)
         let unpriced = ledger.unpricedRecordCount
         return unpriced == 0 ? priced : "\(priced) + \(unpriced) unpriced"
+    }
+
+    private var geminiRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Gemini (Google)")
+            Text("A Gemini key is stored in the Keychain (TonamoxTerminal saves it), so cloud escalation can send to Google when no Anthropic or OpenAI key is set.")
+                .font(.caption).foregroundStyle(.secondary)
+            Button("Remove Gemini key", role: .destructive) {
+                KeychainStore.delete(for: Self.geminiAccount)
+                hasGeminiKey = KeychainStore.hasKey(for: Self.geminiAccount)
+            }
+            .font(.caption)
+            .buttonStyle(.borderless)
+        }
     }
 
     private var retiredGitHubModelsRow: some View {
@@ -172,6 +208,13 @@ struct ConsentSheet: View {
                             value: "\(request.preview.originalTokens)→\(request.preview.compressedTokens) (\(String(format: "%.1f", request.preview.factor))×)")
                     }
                 }
+                if !request.disclosures.isEmpty {
+                    Section("About this request") {
+                        ForEach(request.disclosures, id: \.self) { line in
+                            Text(line).font(.caption)
+                        }
+                    }
+                }
                 if let payload = request.payload {
                     payloadSection(payload)
                 } else if !request.preview.keptText.isEmpty {
@@ -183,11 +226,15 @@ struct ConsentSheet: View {
             }
             .navigationTitle("Send to remote?")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Keep local") { gate.resolve(false) } }
-                ToolbarItem(placement: .confirmationAction) { Button("Send") { gate.resolve(true) } }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Keep local") { gate.resolve(false, requestID: request.id) }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send") { gate.resolve(true, requestID: request.id) }
+                }
             }
             .interactiveDismissDisabled()
-            .onDisappear { gate.resolve(false) }   // safety: never leak the continuation
+            .onDisappear { gate.resolve(false, requestID: request.id) }   // safety: never leak the continuation
         }
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 420)

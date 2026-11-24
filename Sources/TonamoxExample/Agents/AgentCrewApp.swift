@@ -8,7 +8,7 @@ import TonamoxAppleIntelligence
 // §Fix #24: Wraps content in AIAvailabilityGate to show clear messaging
 // when Apple Intelligence is unavailable.
 
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 struct AgentCrewMainView: View {
     @EnvironmentObject var appState: AppState
 

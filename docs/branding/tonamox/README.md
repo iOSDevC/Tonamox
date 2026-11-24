@@ -26,3 +26,7 @@ Icono independiente:
 ```text
 Precise extraction of the selected app icon from this reference branding sheet. Output a square image containing ONLY the large top app icon: the navy rounded square with gold left book pages, cyan right pages, and THREE gold-to-cyan circuit traces ending in three circular nodes. Preserve its existing exact design, geometry, materials, colors, gradients, and lighting. Center this selected icon with a small even white margin in a square canvas. Remove ALL typography and the small monochrome symbol; no text, no TONAMOX word, no subtitle, no plus signs. Do not redesign, simplify, invent details or change the number of circuit terminals. This is the selected existing icon exported on its own, not a new variant.
 ```
+
+## Icono plano (19 de noviembre de 2026)
+
+El icono se redibujó en plano, con el mismo motivo y sin degradados, brillos ni sombras. La fuente vectorial es [app-icon-flat.svg](../app-icon-flat.svg) (variante A). `tonamox-icon.png` y `docs/media/logo.png` son ahora esa variante A, con esquinas redondeadas y transparentes; `tonamox-brand.png` sigue mostrando el diseño anterior. Las apps de ejemplo usan un conjunto de iconos propio cada una en `Sources/TonamoxExample/Common/Assets.xcassets`: `AppIcon` (TonamoxExample, variante A), `AppIconLibrary` (azul marino), `AppIconChat` (solo azules), `AppIconImage` (fondo claro) y `AppIconTerminal` (negro grafito). Las cuatro variantes de color se comparan en [app-icon-flat-variantes.png](../app-icon-flat-variantes.png).

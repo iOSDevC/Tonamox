@@ -62,9 +62,13 @@ struct ContentView: View {
                     MLToolsTab()
                 }
 
-                // AgentCrew needs Apple Intelligence (OS 26); its long pipeline suits a Mac, not a phone.
+                Tab("Licencias", systemImage: "doc.text", value: AppTab.licenses) {
+                    OpenSourceNoticesTab()
+                }
+
+                // AgentCrew needs Apple Intelligence (OS 27); its long pipeline suits a Mac, not a phone.
                 #if !os(iOS)
-                if #available(macOS 26, visionOS 26, *) {
+                if #available(macOS 27, visionOS 27, *) {
                     Tab("Agents", systemImage: "cpu", value: AppTab.agents) {
                         AgentCrewInlineView()
                             .environmentObject(appState)
@@ -86,14 +90,14 @@ struct ContentView: View {
 }
 
 enum AppTab: String {
-    case chat, voice, image, library, models, hybrid, ml, agents
+    case chat, voice, image, library, models, hybrid, ml, licenses, agents
 
     /// Tabs this platform shows; a remembered tab outside it falls back to Chat.
     static var shown: Set<AppTab> {
         #if os(iOS)
-        [.chat, .voice, .image, .library, .models, .hybrid, .ml]
+        [.chat, .voice, .image, .library, .models, .hybrid, .ml, .licenses]
         #else
-        [.chat, .voice, .image, .library, .models, .hybrid, .ml, .agents]
+        [.chat, .voice, .image, .library, .models, .hybrid, .ml, .licenses, .agents]
         #endif
     }
 }
@@ -104,7 +108,7 @@ enum AppTab: String {
 // Previously AgentCrewMainView had its own TabView creating a confusing
 // tab-within-tab hierarchy.
 
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 struct AgentCrewInlineView: View {
     @EnvironmentObject var appState: AppState
     @State private var selectedSection: AgentSection = .pipeline

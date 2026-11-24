@@ -45,7 +45,7 @@ struct TonamoxExampleApp: App {
 #if os(macOS)
         // Top-level Settings scene (⌘,) — hybrid policy, BYOK keys, download tokens.
         Settings {
-            HybridSettingsView(isEmbedded: true)
+            AppSettingsWindow()
         }
 #endif
     }
