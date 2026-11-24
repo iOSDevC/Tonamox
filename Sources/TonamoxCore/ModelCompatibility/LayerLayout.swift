@@ -226,12 +226,14 @@ struct GGUFCacheShape: Equatable {
 
 extension KVCacheLayout {
 
-    // Evidence: llama.cpp b8851 llama-model.cpp (LLM_ARCH_GEMMA4 hparams), llama-hparams.cpp (`n_embd_k_gqa(il)`,
-    // `has_kv`), llama-kv-cache-iswa.cpp (`swa_full`), llama-context.cpp (`swa_full = true` by default).
+    // Evidence: llama.cpp b12407 llama-model.cpp (LLM_ARCH_GEMMA4 hparams), llama-hparams.cpp (`n_embd_k_gqa(il)`,
+    // `has_kv`, `n_embd_r`), llama-kv-cache-iswa.cpp (`swa_full`), llama-context.cpp (`swa_full = true` by default),
+    // models/lfm3.cpp (a layer with no KV heads is a short-convolution layer with an f32 conv state).
 
     /// llama.cpp's per-layer cache for a header that lists its sliding-window layers
-    /// (`attention.sliding_window_pattern`, one flag per layer); `nil` without that list, so every layer is sized
-    /// like the widest one, or when the per-layer values are implausible.
+    /// (`attention.sliding_window_pattern`, one flag per layer) or its short-convolution layers (LFM2 / LFM3:
+    /// `shortconv.l_cache` and 0 in a per-layer `attention.head_count_kv`); `nil` without either, so every layer is
+    /// sized like the widest one, or when the per-layer values are implausible.
     ///
     /// Sliding layers take `attention.key_length_swa` as their width and global layers `attention.key_length`;
     /// `attention.head_count_kv` may list heads per layer. Both kinds are sized for the whole context (`swa_full`).
@@ -239,29 +241,46 @@ extension KVCacheLayout {
     static func derive(gguf header: GGUFHeader) -> GGUFCacheShape? {
         guard let architecture = header.architecture,
               let layers = header.blockCount, (1...maxLayers).contains(layers),
-              let pattern = perLayer(header.metadata["\(architecture).attention.sliding_window_pattern"], layers),
               let fullWidth = header.headDimension, let fullHeads = header.headCountKV else { return nil }
-        let swaWidth = header.architectureInteger("attention.key_length_swa") ?? fullWidth
         let heads = perLayer(header.metadata["\(architecture).attention.head_count_kv"], layers)
             ?? Array(repeating: fullHeads, count: layers)
+        let convState = shortConvolutionStateBytes(header)
+        // Other hybrids (Mamba, DeltaNet) also list 0 heads, but their state is not sized here: they stay uniform.
+        let recurrent = convState == nil ? [] : (0..<layers).filter { heads[$0] == 0 }
+        let listedPattern = perLayer(header.metadata["\(architecture).attention.sliding_window_pattern"], layers)
+        guard let pattern = listedPattern ?? (recurrent.isEmpty ? nil : Array(repeating: 0, count: layers)) else {
+            return nil
+        }
+        let swaWidth = header.architectureInteger("attention.key_length_swa") ?? fullWidth
         let shared = header.architectureInteger("attention.shared_kv_layers")
             .flatMap { (0..<layers).contains($0) ? $0 : nil } ?? 0
-        let cached = 0..<(layers - shared)
+        let cached = (0..<(layers - shared)).filter { !recurrent.contains($0) }
         let sliding = cached.filter { pattern[$0] != 0 }
         let global = cached.filter { pattern[$0] == 0 }
-        guard !sliding.isEmpty,
-              let swaHeads = sliding.map({ heads[$0] }).max(),
-              (1...maxDimension).contains(swaHeads), (1...maxDimension).contains(swaWidth),
+        guard !sliding.isEmpty || !recurrent.isEmpty else { return nil }
+        // The shape's heads and width are the sliding layers'; without any, the global layers'.
+        let rowWidth = sliding.isEmpty ? fullWidth : swaWidth
+        guard let rowHeads = (sliding.isEmpty ? global : sliding).map({ heads[$0] }).max(),
+              (1...maxDimension).contains(rowHeads), (1...maxDimension).contains(rowWidth),
               (1...maxDimension).contains(fullWidth) else { return nil }
-        let globalHeads = global.map { heads[$0] }.max() ?? swaHeads
+        let globalHeads = global.map { heads[$0] }.max() ?? rowHeads
         guard (1...maxDimension).contains(globalHeads) else { return nil }
-        // Same maxima on both kinds and nothing shared: the uniform estimate is already exact.
-        if shared == 0, globalHeads == swaHeads, fullWidth == swaWidth { return nil }
+        // Same maxima on both kinds and nothing shared or recurrent: the uniform estimate is already exact.
+        if shared == 0, recurrent.isEmpty, globalHeads == rowHeads, fullWidth == rowWidth { return nil }
         let layout = KVCacheLayout(
             fullAttentionLayers: global.count, slidingLayers: sliding.count, slidingWindow: 0,
-            fullAttentionKVHeads: global.isEmpty || globalHeads == swaHeads ? nil : globalHeads,
-            fullAttentionHeadDim: global.isEmpty || fullWidth == swaWidth ? nil : fullWidth)
-        return GGUFCacheShape(layout: layout, kvHeads: swaHeads, headDim: swaWidth)
+            recurrentLayers: recurrent.count, recurrentStateBytes: recurrent.count * (convState ?? 0),
+            fullAttentionKVHeads: global.isEmpty || globalHeads == rowHeads ? nil : globalHeads,
+            fullAttentionHeadDim: global.isEmpty || fullWidth == rowWidth ? nil : fullWidth)
+        return GGUFCacheShape(layout: layout, kvHeads: rowHeads, headDim: rowWidth)
+    }
+
+    /// One short-convolution layer's state, `embedding_length × (shortconv.l_cache − 1)` f32 values (`n_embd_r`);
+    /// `nil` when the header has no plausible `shortconv.l_cache`.
+    private static func shortConvolutionStateBytes(_ header: GGUFHeader) -> Int? {
+        guard let cache = header.architectureInteger("shortconv.l_cache"), (2...maxDimension).contains(cache),
+              let width = header.embeddingLength, (1...maxDimension).contains(width) else { return nil }
+        return width * (cache - 1) * 4
     }
 
     /// One integer per layer (flags as 0 / 1), when the array is complete; the parser keeps only its first elements.

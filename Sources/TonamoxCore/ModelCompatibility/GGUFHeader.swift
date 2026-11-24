@@ -86,20 +86,26 @@ public struct GGUFHeader: Sendable, Equatable {
     public let metadata: [String: GGUFValue]
     /// `false` when the bytes ended before every declared key/value was read.
     public let isComplete: Bool
+    /// The first ``GGUFHeaderParser/keptTensorNames`` tensor names, when the bytes reach past the metadata
+    /// (small files such as adapters); empty otherwise.
+    public let tensorNames: [String]
 
     public init(version: UInt32, tensorCount: UInt64, declaredKeyCount: UInt64,
-                metadata: [String: GGUFValue], isComplete: Bool) {
+                metadata: [String: GGUFValue], isComplete: Bool, tensorNames: [String] = []) {
         self.version = version
         self.tensorCount = tensorCount
         self.declaredKeyCount = declaredKeyCount
         self.metadata = metadata
         self.isComplete = isComplete
+        self.tensorNames = tensorNames
     }
 
     /// `general.architecture` — the llama.cpp architecture name (e.g. `qwen35`).
     public var architecture: String? { metadata["general.architecture"]?.text }
     /// `general.name`.
     public var modelName: String? { metadata["general.name"]?.text }
+    /// `general.type`: `model`, `adapter`, `mmproj` or `imatrix` in files written by recent gguf-py.
+    public var generalType: String? { metadata["general.type"]?.text }
     public var blockCount: Int? { architectureInteger("block_count") }
     public var contextLength: Int? { architectureInteger("context_length") }
     public var embeddingLength: Int? { architectureInteger("embedding_length") }
@@ -151,6 +157,10 @@ public enum GGUFHeaderParser {
     public static let keptArrayElements = 64
     /// Array elements kept across the whole header, so nested arrays in a crafted file cannot multiply memory.
     public static let maxKeptArrayValues = 4096
+    /// Tensor names kept from the tensor-info section that follows the metadata.
+    public static let keptTensorNames = 64
+    /// GGML tensors have at most 4 dimensions; more means a corrupt file, so the name read stops.
+    private static let maxTensorDimensions: UInt32 = 8
     private static let maxNesting = 3
     private static let magic = Array("GGUF".utf8)
 
@@ -187,8 +197,29 @@ public enum GGUFHeaderParser {
             }
             index += 1
         }
+        let names = complete ? tensorNames(from: &reader, count: min(tensorCount, UInt64(keptTensorNames))) : []
         return GGUFHeader(version: version, tensorCount: tensorCount, declaredKeyCount: keyCount,
-                          metadata: metadata, isComplete: complete)
+                          metadata: metadata, isComplete: complete, tensorNames: names)
+    }
+
+    /// Up to `count` tensor names; stops quietly where the bytes end or a record looks corrupt.
+    private static func tensorNames(from reader: inout ByteReader, count: UInt64) -> [String] {
+        var names: [String] = []
+        var index: UInt64 = 0
+        while index < count, let name = try? tensorInfoName(from: &reader) {
+            names.append(name)
+            index += 1
+        }
+        return names
+    }
+
+    /// One tensor-info record: name, dimension count, dimensions, type, offset.
+    private static func tensorInfoName(from reader: inout ByteReader) throws -> String {
+        let name = try reader.string()
+        let dimensions = try reader.integer(UInt32.self)
+        guard dimensions <= maxTensorDimensions else { throw Truncated() }
+        try reader.skip(UInt64(dimensions) * 8 + 4 + 8)
+        return name
     }
 
     private static func readEntry(from reader: inout ByteReader,

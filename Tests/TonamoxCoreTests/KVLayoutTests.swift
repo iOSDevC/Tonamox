@@ -168,7 +168,7 @@ final class KVLayoutTests: XCTestCase {
         XCTAssertEqual(shape.headDim, 256)
         XCTAssertEqual(shape.layout, KVCacheLayout(fullAttentionLayers: 8, slidingLayers: 40, slidingWindow: 0,
                                                    fullAttentionKVHeads: 1, fullAttentionHeadDim: 512))
-        // llama.cpp b8851 with swa_full: 40 × 2 × 8 × 256 × 2 B + 8 × 2 × 1 × 512 × 2 B per token on every layer.
+        // llama.cpp b12407 with swa_full: 40 × 2 × 8 × 256 × 2 B + 8 × 2 × 1 × 512 × 2 B per token on every layer.
         XCTAssertEqual(shape.layout.cacheBytes(contextLength: 2048, kvHeads: 8, headDim: 256), 344_064 * 2048)
     }
 

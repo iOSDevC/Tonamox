@@ -9,7 +9,9 @@ struct RuleInput: Sendable {
     let weightFormat: DetectedFormat
     /// Tensor names from the weight map, else from the shipped files' headers; `nil` when neither was read.
     let tensorNames: [String]?
+    /// Model quants only: adapters and auxiliary files (``artifact``) are never versions of the model.
     let quantGroups: [GGUFQuantGroup]
+    let artifact: ArtifactClassification
     /// llama.cpp's per-layer cache from the GGUF header; `nil` for other formats and uniform headers.
     let ggufCache: GGUFCacheShape?
 
@@ -18,7 +20,10 @@ struct RuleInput: Sendable {
         self.target = target
         weightFormat = DetectedFormat.detect(snapshot)
         tensorNames = snapshot.liveWeightMap.map { Array($0.keys) } ?? snapshot.singleFileHeader?.tensorNames
-        quantGroups = GGUFQuantGroup.groups(in: snapshot.listing?.files ?? [])
+        let classified = ModelArtifactClassifier.classify(snapshot)
+        let excluded = Set(classified.excludedFiles.map(\.path))
+        artifact = classified
+        quantGroups = GGUFQuantGroup.groups(in: (snapshot.listing?.files ?? []).filter { !excluded.contains($0.path) })
         ggufCache = weightFormat == .gguf ? snapshot.ggufMetadata.flatMap(KVCacheLayout.derive(gguf:)) : nil
     }
 
@@ -29,6 +34,7 @@ struct RuleInput: Sendable {
         weightFormat = .gguf
         tensorNames = nil
         quantGroups = []
+        artifact = .standaloneModel
         ggufCache = KVCacheLayout.derive(gguf: header)
     }
 
@@ -158,7 +164,7 @@ public enum CompatibilityRules {
 
     public static let all: [CompatibilityRule] = [
         formatRule, generativeRule, mlxConfigRule, mlxModelTypeRule, weightPrefixRule, textOnlyTowerRule,
-        extraSafetensorsRule, visionWeightsRule, ropeRule, tokenizerRule, ggufArchitectureRule, ggufNextNRule, ggufShardRule,
+        extraSafetensorsRule, visionWeightsRule, ropeRule, tokenizerRule, ggufArchitectureRule, ggufShardRule,
         ggufHeaderRule, ggufProjectorRule, imageGenerationRule, licenseRule, contextRule,
     ]
 
@@ -248,7 +254,7 @@ public enum CompatibilityRules {
             return found
         case .gguf:
             return [.info("GGUF weights",
-                "Loaded by llama.cpp \(PinnedRuntimes.llamaCppBuild) through LocalLLMClient 0.5.0.")]
+                "Loaded by llama.cpp \(PinnedRuntimes.llamaCppBuild) through LocalLLMClient.")]
         case .imageGeneration:
             return [.info("Image-generation pipeline",
                 "Pipeline `\(input.listing?.pipelineTag ?? "diffusers")`: not an LLM. Tonamox runs FLUX through TonamoxImageGen (mflux).")]
@@ -507,13 +513,20 @@ extension CompatibilityRules {
 extension CompatibilityRules {
 
     static let ggufArchitectureRule = CompatibilityRule(
-        id: "gguf.architecture", summary: "general.architecture must be known to llama.cpp b8851"
+        id: "gguf.architecture", summary: "general.architecture must be known to the pinned llama.cpp"
     ) { input in
         guard input.weightFormat == .gguf, let arch = input.ggufArchitecture else { return [] }
+        return ggufArchitectureFindings(arch)
+    }
+
+    /// `later` is a parameter so tests can cover the milestone branch while the pinned table is empty.
+    static func ggufArchitectureFindings(
+        _ arch: String, later laterArchitectures: [String: LlamaCppMilestone] = PinnedRuntimes.laterLlamaCppArchitectures
+    ) -> [CompatibilityFinding] {
         let build = PinnedRuntimes.llamaCppBuild
-        if let later = PinnedRuntimes.laterLlamaCppArchitectures[arch] {
+        if let later = laterArchitectures[arch] {
             return [.blocker("Architecture `\(arch)` needs llama.cpp \(later.build)",
-                "llama.cpp \(later.build) (\(later.date)) \(later.change); Tonamox pins \(build) via LocalLLMClient 0.5.0, "
+                "llama.cpp \(later.build) (\(later.date)) \(later.change); Tonamox pins \(build) via LocalLLMClient, "
                 + "whose loader rejects an unknown architecture.")]
         }
         if arch == "clip" {
@@ -528,21 +541,6 @@ extension CompatibilityRules {
             return [.blocker("`\(arch)` is not a chat model", "It is \(reason).")]
         }
         return [.info("Architecture `\(arch)`", "Listed in llama.cpp \(build) (src/llama-arch.cpp).")]
-    }
-
-    static let ggufNextNRule = CompatibilityRule(
-        id: "gguf.qwen35-nextn", summary: "qwen35 with an MTP block needs llama.cpp b9180"
-    ) { input in
-        guard input.weightFormat == .gguf, let header = input.ggufMetadata,
-              let arch = header.architecture, ["qwen35", "qwen35moe"].contains(arch),
-              let nextn = header.nextnPredictLayers, nextn > 0 else { return [] }
-        let milestone = PinnedRuntimes.qwen35NextNFix
-        let blocks = header.blockCount.map(String.init) ?? "?"
-        return [.blocker("MTP block breaks loading on \(PinnedRuntimes.llamaCppBuild)",
-            "`\(arch).block_count` \(blocks) includes \(nextn) NextN layer(s). b8851 marks recurrent layers arithmetically "
-            + "(`(i + 1) % full_attention_interval != 0`) over every block, so it demands `ssm_*` tensors for the MTP "
-            + "block that do not exist and the load throws. "
-            + "Fixed in llama.cpp \(milestone.build) (\(milestone.date), \(milestone.change)).")]
     }
 
     static let ggufShardRule = CompatibilityRule(

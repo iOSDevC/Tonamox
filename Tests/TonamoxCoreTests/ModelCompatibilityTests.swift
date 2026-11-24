@@ -239,13 +239,12 @@ final class ModelCompatibilityTests: XCTestCase {
 
 extension ModelCompatibilityTests {
 
-    func testQwen35WithNextNNeedsANewerLlamaCpp() throws {
+    func testQwen35WithNextNRunsOnThePinnedLlamaCpp() throws {
         let header = try GGUFHeaderParser.parse(GGUFBytes.qwen35(nextn: 1).encoded)
         let report = CompatibilityEvaluator.evaluate(Fixture.gguf(header: header), on: mac)
 
-        XCTAssertEqual(report.status, .notRunnable)
-        let blocker = try XCTUnwrap(report.blockers.first { $0.rule == "gguf.qwen35-nextn" })
-        XCTAssertTrue(blocker.detail.contains("b9180"))
+        XCTAssertTrue(report.status.isRunnable, "b12407 includes the b9180 NextN fix (PR #22673)")
+        XCTAssertEqual(report.blockers, [])
         XCTAssertEqual(report.quantFits.count, 2)
     }
 
@@ -263,10 +262,28 @@ extension ModelCompatibilityTests {
         XCTAssertNil(entry.maxContextLength, "262144 needs no cap")
     }
 
-    func testLaterArchitectureBlocks() {
-        let report = CompatibilityEvaluator.evaluate(Fixture.gguf(architecture: "qwen4exp"), on: mac)
+    func testUnknownArchitectureBlocks() {
+        let report = CompatibilityEvaluator.evaluate(Fixture.gguf(architecture: "not-an-arch"), on: mac)
         let blocker = report.blockers.first { $0.rule == "gguf.architecture" }
-        XCTAssertTrue(blocker?.title.contains("b10660") == true)
+        XCTAssertEqual(blocker?.title, "Architecture `not-an-arch` is unknown to llama.cpp b12407")
+    }
+
+    func testLaterArchitectureMilestoneBlocksWithItsBuild() throws {
+        let milestone = LlamaCppMilestone(build: "b99999", date: "2027-01-01", change: "added `futurearch`")
+        let findings = CompatibilityRules.ggufArchitectureFindings("futurearch", later: ["futurearch": milestone])
+
+        let blocker = try XCTUnwrap(findings.first)
+        XCTAssertEqual(findings.count, 1)
+        XCTAssertEqual(blocker.level, .blocker)
+        XCTAssertEqual(blocker.title, "Architecture `futurearch` needs llama.cpp b99999")
+        XCTAssertTrue(blocker.detail.contains("Tonamox pins b12407"), blocker.detail)
+        XCTAssertEqual(CompatibilityRules.ggufArchitectureFindings("futurearch").first?.title,
+                       "Architecture `futurearch` is unknown to llama.cpp b12407")
+    }
+
+    func testQwen4ExpIsKnownSinceTheB12407Bump() {
+        let report = CompatibilityEvaluator.evaluate(Fixture.gguf(architecture: "qwen4exp"), on: mac)
+        XCTAssertFalse(report.blockers.contains { $0.rule == "gguf.architecture" })
     }
 
     func testEmbeddingArchitectureIsNotAChatModel() {
@@ -430,7 +447,7 @@ extension ModelCompatibilityTests {
         let ids = Set(CompatibilityRules.all.map(\.id)).union(["fit", "entry", "repository", "kv", "moe"])
         let snapshots = [
             Fixture.mlx("o/a", config: Fixture.qwen35Config, weightMap: Fixture.weightMap(["visual": 1, "language_model": 1])),
-            Fixture.gguf(architecture: "qwen4exp"),
+            Fixture.gguf(architecture: "not-an-arch"),
             RepoSnapshot(repoID: "o/missing"),
         ]
         for snapshot in snapshots {
@@ -694,8 +711,7 @@ final class ModelCompatibilityCheckerTests: XCTestCase {
 
         XCTAssertEqual(stubs.requests(for: "m-Q4_K_M.gguf").first?.value(forHTTPHeaderField: "Range"), "bytes=0-16383")
         XCTAssertTrue(stubs.requests(for: "mmproj").isEmpty)
-        XCTAssertEqual(report.status, .notRunnable)
-        XCTAssertNotNil(report.blockers.first { $0.rule == "gguf.qwen35-nextn" })
+        XCTAssertTrue(report.status.isRunnable)
         XCTAssertTrue(report.findings.contains { $0.title == "Header partly read" })
         XCTAssertTrue(report.findings.contains { $0.title == "Vision projector ignored" })
         XCTAssertEqual(report.overview.layers, 65)

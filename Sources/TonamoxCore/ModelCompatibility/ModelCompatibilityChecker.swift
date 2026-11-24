@@ -69,9 +69,7 @@ public struct ModelCompatibilityChecker: Sendable {
         snapshot.listing = listing
 
         let topLevel = Set(listing.files.filter(\.isTopLevel).map(\.path))
-        let groups = GGUFQuantGroup.groups(in: listing.files)
-        let sample = ggufFile.flatMap { file in listing.files.contains { $0.path == file } ? file : nil }
-            ?? Self.headerSample(in: groups)
+        let sample = Self.headerSamplePath(in: listing.files, requested: ggufFile)
         let shippedSafetensors = listing.files.filter { $0.isSafetensors && $0.isTopLevel }.map(\.path)
 
         async let config = fileIfListed("config.json", in: topLevel, repoID: repoID, subject: .config)
@@ -114,6 +112,14 @@ public struct ModelCompatibilityChecker: Sendable {
         }
         guard case .success(let header)? = await mergedSafetensorsHeader(repoID: repoID, paths: paths) else { return nil }
         return header.tensorBytes
+    }
+
+    /// The GGUF whose header is read: `requested` when listed, else a model candidate. Name-marked adapters and
+    /// projectors are read only when nothing else is, so their header can confirm or clear the name.
+    static func headerSamplePath(in files: [RepoFile], requested: String? = nil) -> String? {
+        if let requested, files.contains(where: { $0.path == requested }) { return requested }
+        let candidates = files.filter { ModelArtifactClassifier.nameKind(of: $0.path) == nil }
+        return headerSample(in: GGUFQuantGroup.groups(in: candidates)) ?? headerSample(in: GGUFQuantGroup.groups(in: files))
     }
 
     /// Subfolders hold auxiliary GGUFs (MTP draft heads, other variants) that the downloader never fetches, so a

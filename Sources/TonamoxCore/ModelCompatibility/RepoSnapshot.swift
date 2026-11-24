@@ -43,11 +43,14 @@ public struct HFRepoInfo: Sendable, Equatable {
     public let ggufContextLength: Int?
     /// `sha`: the commit the listing describes, so later fetches can be pinned to it.
     public let revision: String?
+    /// `cardData.base_model`: the model(s) this one derives from, as the card lists them.
+    public let baseModels: [String]
 
     public init(repoID: String, files: [RepoFile], tags: [String] = [], pipelineTag: String? = nil,
                 libraryName: String? = nil, gatedMode: String? = nil,
                 licenseID: String? = nil, licenseName: String? = nil, licenseLink: String? = nil,
-                ggufArchitecture: String? = nil, ggufContextLength: Int? = nil, revision: String? = nil) {
+                ggufArchitecture: String? = nil, ggufContextLength: Int? = nil, revision: String? = nil,
+                baseModels: [String] = []) {
         self.repoID = repoID
         self.files = files
         self.tags = tags
@@ -60,6 +63,7 @@ public struct HFRepoInfo: Sendable, Equatable {
         self.ggufArchitecture = ggufArchitecture
         self.ggufContextLength = ggufContextLength
         self.revision = revision
+        self.baseModels = baseModels
     }
 
     /// Decode the model-info payload. Pure, so fixtures can drive it.
@@ -82,7 +86,8 @@ public struct HFRepoInfo: Sendable, Equatable {
             licenseLink: card["license_link"] as? String,
             ggufArchitecture: gguf["architecture"] as? String,
             ggufContextLength: gguf["context_length"] as? Int,
-            revision: object["sha"] as? String)
+            revision: object["sha"] as? String,
+            baseModels: (card["base_model"] as? String).map { [$0] } ?? card["base_model"] as? [String] ?? [])
     }
 
     private static func file(from sibling: [String: Any]) -> RepoFile? {

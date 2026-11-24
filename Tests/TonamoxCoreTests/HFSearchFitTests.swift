@@ -76,8 +76,13 @@ final class HFSearchFitTests: XCTestCase {
         XCTAssertEqual(llm.likes, 0, "missing likes defaults to 0")
     }
 
-    func testSearchURLEncodesQueryAndIsEmptyForBlank() {
+    func testSearchURLEncodesQueryAndIsEmptyForBlank() throws {
         XCTAssertNil(HuggingFaceSearch.searchURL(query: "   ", limit: 10, sort: .downloads))
+        let browse = HuggingFaceSearch.browseURL(limit: 10, sort: .downloads, tag: "gguf")
+        let items = URLComponents(url: try XCTUnwrap(browse), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(items.first { $0.name == "search" })
+        XCTAssertEqual(items.first { $0.name == "filter" }?.value, "gguf")
+        XCTAssertEqual(items.first { $0.name == "sort" }?.value, HuggingFaceSearch.Sort.downloads.rawValue)
         let url = HuggingFaceSearch.searchURL(query: "flux schnell", limit: 5, sort: .likes)
         XCTAssertEqual(url?.host, "huggingface.co")
         let q = url?.query ?? ""

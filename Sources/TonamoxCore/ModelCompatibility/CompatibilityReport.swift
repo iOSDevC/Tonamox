@@ -49,9 +49,15 @@ public struct QuantFit: Sendable, Equatable, Identifiable {
     /// Split quants are listed for completeness but Tonamox cannot load them.
     public var isUsable: Bool { !option.isSplit }
 
-    /// The largest single-file quant with at least 20 % headroom, else the best-fitting single-file quant.
+    /// The downloader fetches top-level files only.
+    public var isTopLevel: Bool { !option.firstPath.contains("/") }
+
+    /// The largest single-file quant with at least 20 % headroom, else the best-fitting single-file quant. Top-level
+    /// files first: a subfolder quant is picked only when nothing else is a single file.
     public static func recommended(in fits: [QuantFit]) -> QuantFit? {
-        let usable = fits.filter(\.isUsable)
+        let single = fits.filter(\.isUsable)
+        let topLevel = single.filter(\.isTopLevel)
+        let usable = topLevel.isEmpty ? single : topLevel
         let comfortable = usable.filter { $0.memory.rating <= .good }
         return comfortable.max { $0.option.totalBytes < $1.option.totalBytes }
             ?? usable.min { ($0.memory.rating, $0.option.totalBytes) < ($1.memory.rating, $1.option.totalBytes) }
@@ -102,6 +108,8 @@ public struct CompatibilityReport: Sendable {
     public let licenseID: String?
     public let licenseName: String?
     public let gatedMode: String?
+    /// What the repo is: a standalone model, an adapter (LoRA) for a base model, or only auxiliary files.
+    public let artifact: ArtifactClassification
 
     public var blockers: [CompatibilityFinding] { findings.filter { $0.level == .blocker } }
     public var caveats: [CompatibilityFinding] { findings.filter { $0.level == .caveat } }
@@ -117,6 +125,18 @@ public struct CompatibilityReport: Sendable {
     /// The fit that decides: the whole model for MLX, the recommended quant for GGUF.
     public var bestFit: FitEstimate? {
         weightsFit ?? QuantFit.recommended(in: quantFits)?.memory
+    }
+
+    /// The quant the suggested entry downloads; `nil` when nothing can run here.
+    public var recommendedQuant: QuantFit? {
+        guard let path = suggestedEntry?.ggufFilename else { return nil }
+        return quantFits.first { $0.option.firstPath == path }
+    }
+
+    /// The smallest loadable quant (any quant when every one is split), for "nothing fits" answers.
+    public var smallestQuant: QuantFit? {
+        let usable = quantFits.filter(\.isUsable)
+        return (usable.isEmpty ? quantFits : usable).min { $0.option.totalBytes < $1.option.totalBytes }
     }
 
     public var huggingFaceURL: URL? { URL(string: "https://huggingface.co/\(repoID)") }
@@ -136,13 +156,17 @@ public enum CompatibilityEvaluator {
         guard snapshot.listing != nil else { return unreadable(snapshot, target: target) }
         let input = RuleInput(snapshot: snapshot, target: target)
 
+        let isModel = input.artifact.kind.isStandaloneModel
         let weightsBytes = input.weightFormat == .gguf ? nil : input.safetensorsBytes
-        let weightsFit = weightsBytes.flatMap { weightsEstimate(input, bytes: $0) }
+        // An adapter's or projector's own size says nothing about running a model.
+        let weightsFit = isModel ? weightsBytes.flatMap { weightsEstimate(input, bytes: $0) } : nil
         let quantFits = input.weightFormat == .gguf ? input.quantGroups.map { quantFit($0, input: input) } : []
 
-        var findings = CompatibilityRules.all.flatMap { $0.findings(for: input) }
-        findings += fitFindings(input, weightsFit: weightsFit, quantFits: quantFits)
-        findings += layoutFindings(input, weightsFit: weightsFit)
+        var findings = artifactFindings(input) + CompatibilityRules.all.flatMap { $0.findings(for: input) }
+        if isModel {
+            findings += fitFindings(input, weightsFit: weightsFit, quantFits: quantFits)
+            findings += layoutFindings(input, weightsFit: weightsFit)
+        }
         let hasBlocker = findings.contains { $0.level == .blocker }
         let category = hasBlocker ? nil : input.inferredCategory
         let entry = hasBlocker
@@ -158,7 +182,7 @@ public enum CompatibilityEvaluator {
             status: verdict(input, findings: findings), findings: sorted(findings),
             overview: overview(input, category: category), weightsBytes: weightsBytes, weightsFit: weightsFit,
             quantFits: quantFits, suggestedEntry: entry, licenseID: input.listing?.licenseID,
-            licenseName: input.listing?.licenseName, gatedMode: input.listing?.gatedMode)
+            licenseName: input.listing?.licenseName, gatedMode: input.listing?.gatedMode, artifact: input.artifact)
     }
 
     // MARK: Verdict
@@ -192,7 +216,7 @@ public enum CompatibilityEvaluator {
                                                             headDim: nil, hasVision: false, quantization: nil,
                                                             kvLayers: nil, experts: nil),
             weightsBytes: nil, weightsFit: nil, quantFits: [], suggestedEntry: nil, licenseID: nil, licenseName: nil,
-            gatedMode: nil)
+            gatedMode: nil, artifact: .standaloneModel)
     }
 
     // MARK: Fit
@@ -253,7 +277,7 @@ public enum CompatibilityEvaluator {
         let pool = usable.isEmpty ? quantFits : usable
         let loading = pool.filter { $0.memory.rating <= .marginal }.count
         let streaming = pool.filter { $0.memory.rating == .streamingRequired }.count
-        let tally = "\(loading) of \(pool.count)\(usable.isEmpty ? "" : " single-file") quants load fully"
+        let tally = "\(loading) of \(pool.count)\(usable.isEmpty ? "" : " single-file") versions load fully"
             + (streaming > 0 ? ", \(streaming) only by streaming." : ".")
         guard loading + streaming > 0,
               let best = QuantFit.recommended(in: pool) ?? pool.min(by: { rank($0) < rank($1) }) else {
@@ -261,13 +285,61 @@ public enum CompatibilityEvaluator {
             let label = smallest.map { $0.option.label ?? $0.option.firstPath } ?? "?"
             let needed = smallest.map { String(format: "%.1f GB", $0.memory.requiredGB) } ?? "?"
             return [.blocker("fit", "Too large for \(device)",
-                "The smallest\(usable.isEmpty ? "" : " single-file") quant (\(label)) needs ≈\(needed); the budget is "
+                "The smallest\(usable.isEmpty ? "" : " single-file") version (\(label)) needs ≈\(needed); the budget is "
                 + "\(input.target.budgetText). \(input.target.source)")]
         }
         let base = fitFinding(best.memory, device: device,
-                              subject: "Recommended quant \(best.option.label ?? best.option.firstPath)")
-        let title = base.level == .info ? "\(loading) of \(pool.count) quants fit \(device)" : base.title
+                              subject: "Recommended version \(best.option.label ?? best.option.firstPath)")
+        let title = base.level == .info
+            ? "\(loading) of \(pool.count) versions (quantizations) fit \(device)" : base.title
         return [CompatibilityFinding(rule: "fit", level: base.level, title: title, detail: base.detail + " " + tally)]
+    }
+
+    // MARK: Artifact
+
+    /// Adapters and auxiliary-only repos block before any fit is judged; files kept out of the version list are
+    /// named for a model repo.
+    static func artifactFindings(_ input: RuleInput) -> [CompatibilityFinding] {
+        let artifact = input.artifact
+        switch artifact.kind {
+        case .adapter(let base):
+            return [adapterFinding(artifact, base: base)]
+        case .auxiliary(let role):
+            guard input.weightFormat == .gguf, input.quantGroups.isEmpty else { return [] }
+            return [.blocker("artifact", "No model file, only a \(role.label.lowercased())",
+                "Every GGUF here is auxiliary (\(artifact.excludedFiles.map { "`\($0.path)`" }.joined(separator: ", "))): "
+                + "it helps a model but is not one, so there is nothing to chat with.")]
+        case .standaloneModel:
+            var findings: [CompatibilityFinding] = []
+            if artifact.isSuspectedAdapter {
+                let evidence = artifact.evidence.map { " (\($0))" } ?? ""
+                findings.append(.caveat("artifact", "Might be an adapter (LoRA)",
+                    "\(artifact.signal?.label ?? "A signal")\(evidence) suggests an adapter, but no file header could "
+                    + "confirm it. An adapter cannot be loaded on its own and Tonamox does not apply adapters; a merged "
+                    + "model works. The versions below are listed as model files."))
+            }
+            let named = artifact.excludedFiles.filter { $0.kind != .auxiliary(.visionProjector) }
+            guard !named.isEmpty else { return findings }
+            let list = named.map { "`\($0.path)` (\($0.kind.label.lowercased()))" }.joined(separator: ", ")
+            return findings + [.info("artifact", "Files not offered as versions",
+                "\(list): not model weights Tonamox can load on their own, so they are not counted as versions.")]
+        }
+    }
+
+    private static func adapterFinding(_ artifact: ArtifactClassification, base: String?) -> CompatibilityFinding {
+        let baseText = base.map { " (`\($0)`)" } ?? ""
+        let merged = "Look for a merged GGUF of \(base.map { "`\($0)`" } ?? "the base model") instead."
+        let evidence = artifact.evidence.map { ": \($0)" } ?? ""
+        guard artifact.isCertain else {
+            return .blocker("artifact", "Probably an adapter (LoRA), not a standalone model",
+                "Only the name says so\(evidence). An adapter modifies a base model\(baseText) and cannot be loaded on "
+                + "its own; Tonamox does not apply adapters. \(merged) A merged model's GGUF header says "
+                + "`general.type` = `model`.")
+        }
+        let signal = artifact.signal.map { " Decided by \($0.label)\(evidence)." } ?? ""
+        return .blocker("artifact", "Not a standalone model: an adapter (LoRA)",
+            "This repo is an adapter (LoRA) that modifies a base model\(baseText). It cannot be loaded on its own, and "
+            + "Tonamox does not apply adapters. \(merged)\(signal)")
     }
 
     /// Context sampled for the KV figure in the `kv` finding.

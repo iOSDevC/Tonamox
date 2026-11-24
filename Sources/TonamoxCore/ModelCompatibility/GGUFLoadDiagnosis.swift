@@ -10,7 +10,7 @@ import LocalLLMClient
 public struct IncompatibleGGUFError: LocalizedError, Equatable, Sendable {
     /// The file's name.
     public let filename: String
-    /// The `gguf.architecture` / `gguf.qwen35-nextn` blockers the file's header raised.
+    /// The `gguf.architecture` blockers the file's header raised.
     public let blockers: [CompatibilityFinding]
     /// The load error llama.cpp reported through LocalLLMClient.
     public let underlyingMessage: String
@@ -28,7 +28,7 @@ public struct IncompatibleGGUFError: LocalizedError, Equatable, Sendable {
 /// It runs only after a failure, so a rule left stale by a llama.cpp bump never blocks a load that would succeed.
 enum GGUFLoadDiagnosis {
 
-    static let rules = [CompatibilityRules.ggufArchitectureRule, CompatibilityRules.ggufNextNRule]
+    static let rules = [CompatibilityRules.ggufArchitectureRule]
 
     /// An ``IncompatibleGGUFError`` when `error` is LocalLLMClient's load failure and a rule blocks `url`'s header;
     /// otherwise `error` itself. `async` so the read leaves the main actor the GGUF loaders are called on.
@@ -52,7 +52,7 @@ enum GGUFLoadDiagnosis {
 
     /// The blockers ``rules`` raise for a local file's header.
     static func blockers(for header: GGUFHeader, path: String) -> [CompatibilityFinding] {
-        // Neither rule reads the target; `thisDevice()` would measure memory and resolve the host name for nothing.
+        // The rule does not read the target; `thisDevice()` would measure memory and resolve the host name for nothing.
         let input = RuleInput(localGGUF: header, path: path, target: .mac32GB)
         // The pinned loader accepts these, so their only blocker ("not a chat model") does not explain a failed load.
         let knownArchitecture = header.architecture.map(PinnedRuntimes.llamaCppArchitectures.contains) ?? false

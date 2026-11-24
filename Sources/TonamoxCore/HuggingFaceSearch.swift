@@ -62,7 +62,11 @@ public enum HuggingFaceSearch {
         tag: String? = nil,
         session: URLSession = .shared
     ) async throws -> [HFModelHit] {
-        guard let url = searchURL(query: query, limit: limit, sort: sort, tag: tag) else { return [] }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let built = trimmed.isEmpty
+            ? browseURL(limit: limit, sort: sort, tag: tag)
+            : searchURL(query: trimmed, limit: limit, sort: sort, tag: tag)
+        guard let url = built else { return [] }
         let (data, response) = try await session.data(from: url)
         guard let http = response as? HTTPURLResponse else {
             throw HuggingFaceRepo.RepoError.noResponse
@@ -84,6 +88,21 @@ public enum HuggingFaceSearch {
         comps.path = "/api/models"
         comps.queryItems = [
             URLQueryItem(name: "search", value: trimmed),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "sort", value: sort.rawValue),
+            URLQueryItem(name: "full", value: "true"),
+        ]
+        if let tag, !tag.isEmpty { comps.queryItems?.append(URLQueryItem(name: "filter", value: tag)) }
+        return comps.url
+    }
+
+    /// The `/api/models` listing with no search text: the top models for `sort`, narrowed by `tag` when given.
+    public static func browseURL(limit: Int, sort: Sort, tag: String? = nil) -> URL? {
+        var comps = URLComponents()
+        comps.scheme = "https"
+        comps.host = "huggingface.co"
+        comps.path = "/api/models"
+        comps.queryItems = [
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "sort", value: sort.rawValue),
             URLQueryItem(name: "full", value: "true"),

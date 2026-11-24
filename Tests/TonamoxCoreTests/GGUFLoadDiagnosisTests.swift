@@ -11,33 +11,31 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
 
     // MARK: - Diagnosis
 
-    func testNextNHeaderOnDiskRaisesTheNextNBlocker() throws {
-        let file = try write(Self.nextnHeader(), named: "Qwen3.8-27B-Q4_K_M.gguf")
+    func testUnknownArchitectureOnDiskRaisesTheArchitectureBlocker() throws {
+        let file = try write(Self.unknownHeader(), named: "Future-27B-Q4_K_M.gguf")
 
         let bytes = ModelCompatibilityChecker.defaultGGUFHeaderBytes
         let header = try XCTUnwrap(GGUFLoadDiagnosis.header(at: file, byteCount: bytes))
         let blockers = GGUFLoadDiagnosis.blockers(for: header, path: file.lastPathComponent)
 
-        XCTAssertEqual(blockers.map(\.rule), ["gguf.qwen35-nextn"])
-        XCTAssertTrue(blockers[0].detail.contains("b9180"), blockers[0].detail)
+        XCTAssertEqual(blockers.map(\.rule), ["gguf.architecture"])
+        XCTAssertTrue(blockers[0].title.contains("b12407"), blockers[0].title)
     }
 
     func testHeaderCutByTheReadLimitStillExplains() throws {
-        let file = try write(GGUFBytes.qwen35(nextn: 1, vocabulary: 2000).encoded, named: "big vocab.gguf")
+        let file = try write(Self.unknownHeader(vocabulary: 2000), named: "big vocab.gguf")
 
         let header = try XCTUnwrap(GGUFLoadDiagnosis.header(at: file, byteCount: 512))
 
         XCTAssertFalse(header.isComplete)
         XCTAssertEqual(GGUFLoadDiagnosis.blockers(for: header, path: "big vocab.gguf").map(\.rule),
-                       ["gguf.qwen35-nextn"])
+                       ["gguf.architecture"])
     }
 
-    func testLaterArchitectureRaisesTheArchitectureBlocker() throws {
-        let header = try GGUFHeaderParser.parse(Self.header(architecture: "qwen4exp").encoded)
-        let blockers = GGUFLoadDiagnosis.blockers(for: header, path: "m.gguf")
+    func testNextNHeaderExplainsNothingSinceTheB9180Fix() throws {
+        let header = try GGUFHeaderParser.parse(GGUFBytes.qwen35(nextn: 1).encoded)
 
-        XCTAssertEqual(blockers.map(\.rule), ["gguf.architecture"])
-        XCTAssertTrue(blockers[0].title.contains("b10660"), blockers[0].title)
+        XCTAssertEqual(GGUFLoadDiagnosis.blockers(for: header, path: "Qwen3.8-27B-Q4_K_M.gguf"), [])
     }
 
     func testKnownArchitecturesExplainNothing() throws {
@@ -46,11 +44,11 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
 
         XCTAssertEqual(GGUFLoadDiagnosis.blockers(for: chat, path: "m.gguf"), [])
         XCTAssertEqual(GGUFLoadDiagnosis.blockers(for: encoder, path: "m.gguf"), [],
-                       "b8851 loads bert, so 'not a chat model' is not why a load failed")
+                       "llama.cpp loads bert, so 'not a chat model' is not why a load failed")
     }
 
     func testOnlyLocalLLMClientLoadFailuresAreExplained() async throws {
-        let file = try write(Self.nextnHeader(), named: "nextn.gguf")
+        let file = try write(Self.unknownHeader(), named: "unknown.gguf")
         let context = LLMError.invalidParameter(reason: "Failed to create context")
 
         let cancelled = await GGUFLoadDiagnosis.explained(CancellationError(), loading: file)
@@ -70,34 +68,34 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
     }
 
     func testMessageCarriesTheBlockerAndTheUnderlyingError() {
-        let blocker = CompatibilityFinding.blocker("gguf.qwen35-nextn", "MTP block breaks loading on b8851",
-                                                   "Fixed in llama.cpp b9180.")
+        let blocker = CompatibilityFinding.blocker("gguf.architecture", "Architecture `x` is unknown to llama.cpp b12407",
+                                                   "It is not in `LLM_ARCH_NAMES`.")
         let error = IncompatibleGGUFError(filename: "m.gguf", blockers: [blocker],
                                           underlyingMessage: "Failed to load model: \(Self.loadFailure)")
 
         XCTAssertEqual(error.localizedDescription,
                        "m.gguf failed to load. Its header shows a known blocker for the bundled llama.cpp: "
-                       + "MTP block breaks loading on b8851. Fixed in llama.cpp b9180. "
+                       + "Architecture `x` is unknown to llama.cpp b12407. It is not in `LLM_ARCH_NAMES`. "
                        + "Underlying error: Failed to load model: \(Self.loadFailure)")
     }
 
     // MARK: - Loading through llama.cpp
 
-    func testFailedLoadOfANextNHeaderIsExplained() async throws {
-        let file = try write(Self.nextnHeader(), named: "Qwen3.8-27B-Q4_K_M.gguf")
+    func testFailedLoadOfAnUnknownArchitectureIsExplained() async throws {
+        let file = try write(Self.unknownHeader(), named: "Future-27B-Q4_K_M.gguf")
 
         let error = await loadError(file)
 
         let explained = try XCTUnwrap(error as? IncompatibleGGUFError, "got \(String(describing: error))")
-        XCTAssertEqual(explained.blockers.map(\.rule), ["gguf.qwen35-nextn"])
+        XCTAssertEqual(explained.blockers.map(\.rule), ["gguf.architecture"])
         let message = explained.localizedDescription
-        for expected in ["Qwen3.8-27B-Q4_K_M.gguf", "b8851", "b9180", Self.loadFailure] {
+        for expected in ["Future-27B-Q4_K_M.gguf", "futurearch", "b12407", Self.loadFailure] {
             XCTAssertTrue(message.contains(expected), "\(expected) missing from: \(message)")
         }
     }
 
-    func testFailedLoadOfANextNHeaderWithNativeToolCallsIsExplained() async throws {
-        let file = try write(Self.nextnHeader(chatTemplate: Self.nativeToolTemplate), named: "native tools.gguf")
+    func testFailedLoadOfAnUnknownArchitectureWithNativeToolCallsIsExplained() async throws {
+        let file = try write(Self.unknownHeader(chatTemplate: Self.nativeToolTemplate), named: "native tools.gguf")
         let tools: [any LLMTool] = [NoOpTool()]
         let plan = await GGUFTurnEngines.plan(url: file, tools: tools)
         XCTAssertFalse(plan.ownsContext, "the load must go through LocalLLMClient's LlamaClient")
@@ -105,7 +103,7 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
         let error = await loadError(file, tools: tools)
 
         let explained = try XCTUnwrap(error as? IncompatibleGGUFError, "got \(String(describing: error))")
-        XCTAssertEqual(explained.blockers.map(\.rule), ["gguf.qwen35-nextn"])
+        XCTAssertEqual(explained.blockers.map(\.rule), ["gguf.architecture"])
     }
 
     func testTruncatedGGUFOfAKnownArchitectureKeepsTheOriginalError() async throws {
@@ -123,15 +121,14 @@ final class GGUFLoadDiagnosisTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// GGUF v3, no tensors: the three keys the nextn rule reads. llama.cpp rejects it for a missing hyperparameter,
-    /// not for the MTP block, so the load tests prove the wiring only.
-    private static func nextnHeader(chatTemplate: String? = nil) -> Data {
-        var file = GGUFBytes()
-        file.key("general.architecture", .string) { $0.string("qwen35") }
-        file.key("qwen35.block_count", .uint32) { $0.int(UInt32(65)) }
-        file.key("qwen35.nextn_predict_layers", .uint32) { $0.int(UInt32(1)) }
+    /// GGUF v3, no tensors, an architecture llama.cpp does not list.
+    private static func unknownHeader(chatTemplate: String? = nil, vocabulary: Int = 0) -> Data {
+        var file = header(architecture: "futurearch")
         if let chatTemplate {
             file.key("tokenizer.chat_template", .string) { $0.string(chatTemplate) }
+        }
+        file.key("tokenizer.ggml.tokens", .array) {
+            $0.array(of: .string, (0..<vocabulary).map { GGUFBytes.stringValue("token-\($0)") })
         }
         return file.encoded
     }
