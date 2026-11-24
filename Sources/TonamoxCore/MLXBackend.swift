@@ -50,6 +50,7 @@ final class MLXBackend: InferenceBackend {
     }
 
     var isLoaded: Bool { modelContainer != nil }
+    var contextWindow: Int? { isLoaded ? parameters.maxKVSize : nil }
     /// Tool names registered for function-calling (empty = none).
     var registeredToolNames: [String] { tools.map(\.name) }
     /// Hits and misses of the current prompt cache; read between generations.

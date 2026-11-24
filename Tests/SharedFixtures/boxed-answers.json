@@ -1,0 +1,194 @@
+[
+  {
+    "name": "bare box",
+    "input": "\\boxed{754}",
+    "display": "**754**",
+    "plain": "754"
+  },
+  {
+    "name": "dollar math",
+    "input": "$\\boxed{754}$",
+    "display": "**754**",
+    "plain": "754"
+  },
+  {
+    "name": "in a sentence",
+    "input": "La respuesta es $\\boxed{2048}$.",
+    "display": "La respuesta es **2048**.",
+    "plain": "La respuesta es 2048."
+  },
+  {
+    "name": "paren math",
+    "input": "\\(\\boxed{x^{2}}\\)",
+    "display": "**x^{2}**",
+    "plain": "x^{2}"
+  },
+  {
+    "name": "bracket math with spaces",
+    "input": "\\[ \\boxed{42} \\]",
+    "display": "**42**",
+    "plain": "42"
+  },
+  {
+    "name": "display math twice",
+    "input": "$$\\boxed{1}$$ y $$\\boxed{2}$$",
+    "display": "**1** y **2**",
+    "plain": "1 y 2"
+  },
+  {
+    "name": "nested braces",
+    "input": "\\boxed{\\frac{1}{2}}",
+    "display": "**\\frac{1}{2}**",
+    "plain": "\\frac{1}{2}"
+  },
+  {
+    "name": "text command",
+    "input": "\\boxed{\\text{LISTO}}",
+    "display": "**LISTO**",
+    "plain": "LISTO"
+  },
+  {
+    "name": "math with more than the box",
+    "input": "$x = \\boxed{5}$",
+    "display": "$x = **5**$",
+    "plain": "$x = 5$"
+  },
+  {
+    "name": "inline code untouched",
+    "input": "`\\boxed{7}`",
+    "display": "`\\boxed{7}`",
+    "plain": "`\\boxed{7}`"
+  },
+  {
+    "name": "fenced code untouched",
+    "input": "```\n\\boxed{7}\n```\nFin \\boxed{8}",
+    "display": "```\n\\boxed{7}\n```\nFin **8**",
+    "plain": "```\n\\boxed{7}\n```\nFin 8"
+  },
+  {
+    "name": "tilde fence untouched",
+    "input": "~~~bash\necho \\boxed{1}\n~~~",
+    "display": "~~~bash\necho \\boxed{1}\n~~~",
+    "plain": "~~~bash\necho \\boxed{1}\n~~~"
+  },
+  {
+    "name": "unclosed fence untouched",
+    "input": "```\n\\boxed{1}",
+    "display": "```\n\\boxed{1}",
+    "plain": "```\n\\boxed{1}"
+  },
+  {
+    "name": "unclosed box kept",
+    "input": "\\boxed{754",
+    "display": "\\boxed{754",
+    "plain": "\\boxed{754"
+  },
+  {
+    "name": "empty box",
+    "input": "A \\boxed{} B",
+    "display": "A  B",
+    "plain": "A  B"
+  },
+  {
+    "name": "no box",
+    "input": "Sin caja",
+    "display": "Sin caja",
+    "plain": "Sin caja"
+  },
+  {
+    "name": "escaped braces",
+    "input": "\\boxed{\\{a\\}}",
+    "display": "**\\{a\\}**",
+    "plain": "\\{a\\}"
+  },
+  {
+    "name": "nested box",
+    "input": "\\boxed{\\boxed{3}}",
+    "display": "**3**",
+    "plain": "3"
+  },
+  {
+    "name": "several boxes",
+    "input": "Two: \\boxed{1}, \\boxed{2}",
+    "display": "Two: **1**, **2**",
+    "plain": "Two: 1, 2"
+  },
+  {
+    "name": "unmatched backtick is prose",
+    "input": "a ` b \\boxed{1}",
+    "display": "a ` b **1**",
+    "plain": "a ` b 1"
+  },
+  {
+    "name": "non-ASCII content",
+    "input": "Resultado: \\boxed{\\text{sí, 754}} ✓",
+    "display": "Resultado: **sí, 754** ✓",
+    "plain": "Resultado: sí, 754 ✓"
+  },
+  {
+    "name": "box inside code span between boxes",
+    "input": "\\boxed{1} `\\boxed{2}` \\boxed{3}",
+    "display": "**1** `\\boxed{2}` **3**",
+    "plain": "1 `\\boxed{2}` 3"
+  },
+  {
+    "name": "box between bold marks",
+    "input": "**\\boxed{754}**",
+    "display": "**754**",
+    "plain": "**754**"
+  },
+  {
+    "name": "box between italic marks",
+    "input": "*\\boxed{754}*",
+    "display": "*754*",
+    "plain": "*754*"
+  },
+  {
+    "name": "bold sentence around a box",
+    "input": "**Respuesta: \\boxed{754}**",
+    "display": "**Respuesta: **754****",
+    "plain": "**Respuesta: 754**"
+  },
+  {
+    "name": "bracket display math on its own lines",
+    "input": "\\[\n\\boxed{754}\n\\]",
+    "display": "**754**",
+    "plain": "754"
+  },
+  {
+    "name": "dollar display math on its own lines",
+    "input": "$$\n\\boxed{754}\n$$\nFin",
+    "display": "**754**\nFin",
+    "plain": "754\nFin"
+  },
+  {
+    "name": "backtick line with backticks after its marks is prose",
+    "input": "```ls -la``` lista los archivos\n\\boxed{3}",
+    "display": "```ls -la``` lista los archivos\n**3**",
+    "plain": "```ls -la``` lista los archivos\n3"
+  },
+  {
+    "name": "emphasis marks in the box are escaped",
+    "input": "\\boxed{2*3*4}",
+    "display": "**2\\*3\\*4**",
+    "plain": "2*3*4"
+  },
+  {
+    "name": "underscore in the box is escaped",
+    "input": "\\boxed{x_1}",
+    "display": "**x\\_1**",
+    "plain": "x_1"
+  },
+  {
+    "name": "an escaped mark stays escaped once",
+    "input": "\\boxed{a\\*b}",
+    "display": "**a\\*b**",
+    "plain": "a\\*b"
+  },
+  {
+    "name": "unicode spaces around the content are trimmed",
+    "input": "\\boxed{\u00a0754\u3000} y \\boxed{\ufeff7\u2009}",
+    "display": "**754** y **7**",
+    "plain": "754 y 7"
+  }
+]

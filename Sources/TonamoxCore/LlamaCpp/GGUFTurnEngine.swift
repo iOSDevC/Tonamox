@@ -25,9 +25,14 @@ protocol GGUFTurnEngine: AnyObject {
     /// Streams the reply to `messages` through `onPiece`. Stops after `maxTokens` pieces, when `shouldStop` returns
     /// `true` for the pieces so far, or when the task is cancelled; then it returns the text so far. An engine with
     /// tools runs them as `toolLoop` says, with every round sharing `maxTokens`.
+    ///
+    /// With a reasoning budget (`reasoning`), `maxTokens` is the answer's: the reasoning may take up to the budget
+    /// on top, shared by every round, and a block still open at the budget is closed by decoding its closing tag
+    /// (``LlamaTurnEngine`` only; the tool engine ignores the budget and caps the whole reply at `maxTokens`).
     func respond(
         to messages: [LlamaChatMessage],
         maxTokens: Int,
+        reasoning: ReasoningPlan,
         toolLoop: ToolLoopContext,
         shouldStop: ((Int) -> Bool)?,
         onPiece: (String) -> Void
@@ -45,6 +50,8 @@ struct GGUFTurnReply: Sendable {
     /// The text the last prefill decoded: the end of `prompt` when the KV cache already held the rest; `nil` means
     /// all of `prompt`.
     var prefilled: String? = nil
+    /// Reasoning and answer counts across the turn's replies.
+    var reasoning: ReasoningTurn? = nil
 }
 
 extension GGUFTurnEngine {
@@ -52,11 +59,24 @@ extension GGUFTurnEngine {
     func respond(
         to messages: [LlamaChatMessage],
         maxTokens: Int,
+        reasoning: ReasoningPlan = .automatic,
         shouldStop: ((Int) -> Bool)?,
         onPiece: (String) -> Void
     ) async throws -> GGUFTurnReply {
-        try await respond(to: messages, maxTokens: maxTokens, toolLoop: .standard, shouldStop: shouldStop,
-                          onPiece: onPiece)
+        try await respond(to: messages, maxTokens: maxTokens, reasoning: reasoning, toolLoop: .standard,
+                          shouldStop: shouldStop, onPiece: onPiece)
+    }
+
+    /// A turn without reasoning control.
+    func respond(
+        to messages: [LlamaChatMessage],
+        maxTokens: Int,
+        toolLoop: ToolLoopContext,
+        shouldStop: ((Int) -> Bool)?,
+        onPiece: (String) -> Void
+    ) async throws -> GGUFTurnReply {
+        try await respond(to: messages, maxTokens: maxTokens, reasoning: .automatic, toolLoop: toolLoop,
+                          shouldStop: shouldStop, onPiece: onPiece)
     }
 
     /// A turn timed with a ``StreamMeter``: `onToken` receives the accumulated text, and the stats estimate the
@@ -64,15 +84,16 @@ extension GGUFTurnEngine {
     func measuredTurn(
         _ conversation: [LlamaChatMessage],
         maxTokens: Int,
+        reasoning: ReasoningPlan = .automatic,
         backend: BackendKind,
         source: GenerationStats.Provenance,
         toolLoop: ToolLoopContext = .standard,
         shouldStop: ((Int) -> Bool)? = nil,
         onToken: (String) -> Void
-    ) async throws -> (text: String, stats: GenerationStats, tools: ToolTurnSummary?) {
+    ) async throws -> (text: String, stats: GenerationStats, tools: ToolTurnSummary?, reasoning: ReasoningTurn?) {
         var meter = StreamMeter()
         var fullText = ""
-        let reply = try await respond(to: conversation, maxTokens: maxTokens, toolLoop: toolLoop,
+        let reply = try await respond(to: conversation, maxTokens: maxTokens, reasoning: reasoning, toolLoop: toolLoop,
                                       shouldStop: shouldStop) { piece in
             meter.recordPiece()
             fullText += piece
@@ -80,12 +101,23 @@ extension GGUFTurnEngine {
         }
         let stats = meter.stats(backend: backend, source: source, prompt: reply.prefilled ?? reply.prompt,
                                 output: reply.text)
-        return (reply.text, stats, reply.tools)
+        return (reply.text, stats, reply.tools, reply.reasoning)
     }
 }
 
 @MainActor
 enum GGUFTurnEngines {
+    /// The total pieces a turn may produce: the answer's, plus the reasoning budget and its forced close.
+    nonisolated static func pieceLimit(maxTokens: Int, reasoning: ReasoningPlan) -> Int {
+        ReasoningPlan.pieceLimit(maxTokens: maxTokens, budget: reasoning.budget)
+    }
+
+    /// Tokens kept free for the reply when trimming history: the answer's, plus the budget only when the prompt
+    /// opens a reasoning block. A model that opens one itself may then run into the window, which ends its reply.
+    nonisolated static func replyReserve(answer: Int, total: Int, reasoning: ReasoningPlan) -> Int {
+        reasoning.budget != nil && reasoning.openedTag != nil ? total : answer
+    }
+
     /// Loads the model once, off the main actor. Without tools, or with tools the model writes as `<tool_call>` JSON,
     /// the engine drives a bare `Context` and keeps its KV cache between turns and rounds; other tool-call formats
     /// need LocalLLMClient's parser, which only a `LlamaClient` owns.
@@ -198,13 +230,23 @@ final class LlamaTurnEngine: GGUFTurnEngine {
     private(set) var reusedPrefills = 0
     private(set) var lastReusedBytes = 0
 
-    /// Pieces across every round of a turn, which share `maxTokens`, and the text a reader sees.
+    /// Pieces across every round of a turn, which share `maxTokens`, and the text a reader sees. With a reasoning
+    /// budget, answer pieces are also counted against `answerLimit`.
     private struct Budget {
         let limit: Int
+        let answerLimit: Int?
         var produced = 0
+        var answered = 0
         var text = ""
+        var reasoning: ReasoningTurn?
 
         var remaining: Int { limit - produced }
+        var answerRemaining: Int? { answerLimit.map { $0 - answered } }
+
+        mutating func record(_ turn: ReasoningTurn) {
+            answered += turn.answerTokens
+            reasoning = reasoning.map { $0.adding(turn) } ?? turn
+        }
     }
 
     private struct Streamed {
@@ -230,6 +272,7 @@ final class LlamaTurnEngine: GGUFTurnEngine {
     func respond(
         to messages: [LlamaChatMessage],
         maxTokens: Int,
+        reasoning: ReasoningPlan,
         toolLoop: ToolLoopContext,
         shouldStop: ((Int) -> Bool)?,
         onPiece: (String) -> Void
@@ -237,13 +280,14 @@ final class LlamaTurnEngine: GGUFTurnEngine {
         try await waitForDecoder()
         try Task.checkCancellation()
 
-        var budget = Budget(limit: maxTokens)
+        var budget = Budget(limit: GGUFTurnEngines.pieceLimit(maxTokens: maxTokens, reasoning: reasoning),
+                            answerLimit: reasoning.budget == nil ? nil : maxTokens)
         var history = LlamaChatNormalizer.normalize(messages)
         guard !renderer.tools.isEmpty else {
-            let reply = try await stream(history, toolRoundsRemain: false, budget: &budget, shouldStop: shouldStop,
-                                         onPiece: onPiece)
+            let reply = try await stream(history, toolRoundsRemain: false, reasoning: reasoning, budget: &budget,
+                                         shouldStop: shouldStop, onPiece: onPiece)
             return GGUFTurnReply(text: budget.text, prompt: reply.prompt, history: reply.history,
-                                 prefilled: reply.prefilled)
+                                 prefilled: reply.prefilled, reasoning: budget.reasoning)
         }
 
         let limit = max(0, toolLoop.options.maxToolRounds)
@@ -258,8 +302,8 @@ final class LlamaTurnEngine: GGUFTurnEngine {
                     try Task.checkCancellation()
                 }
                 replies += 1
-                let streamed = try await stream(history, toolRoundsRemain: rounds < limit, budget: &budget,
-                                                shouldStop: shouldStop, onPiece: onPiece)
+                let streamed = try await stream(history, toolRoundsRemain: rounds < limit, reasoning: reasoning,
+                                                budget: &budget, shouldStop: shouldStop, onPiece: onPiece)
                 history = streamed.history
                 last = streamed
                 return streamed.calls
@@ -270,7 +314,7 @@ final class LlamaTurnEngine: GGUFTurnEngine {
             }
         )
         return GGUFTurnReply(text: budget.text, prompt: last?.prompt ?? "", history: last?.history ?? [],
-                             tools: summary, prefilled: last?.prefilled)
+                             tools: summary, prefilled: last?.prefilled, reasoning: budget.reasoning)
     }
 
     /// One round as the conversation records it: the reply as the model wrote it, then one tool turn per result.
@@ -283,14 +327,20 @@ final class LlamaTurnEngine: GGUFTurnEngine {
     private func stream(
         _ messages: [LlamaChatMessage],
         toolRoundsRemain: Bool,
+        reasoning: ReasoningPlan,
         budget: inout Budget,
         shouldStop: ((Int) -> Bool)?,
         onPiece: (String) -> Void
     ) async throws -> Streamed {
         let held = reusesPromptCache ? resident : nil
         resident = nil
-        let request = LlamaTurnCore.Request(messages: messages, maxTokens: budget.remaining, renderer: renderer,
-                                            toolRoundsRemain: toolRoundsRemain, resident: held)
+        let reserve = GGUFTurnEngines.replyReserve(answer: budget.answerRemaining ?? budget.remaining,
+                                                   total: budget.remaining, reasoning: reasoning)
+        let request = LlamaTurnCore.Request(messages: messages, maxTokens: budget.remaining,
+                                            renderer: renderer.thinking(disabled: reasoning.rendersWithoutThinking),
+                                            toolRoundsRemain: toolRoundsRemain, resident: held, reasoning: reasoning,
+                                            answerTokens: budget.answerRemaining, replyReserve: reserve,
+                                            reasoningSpent: budget.reasoning?.reasoningTokens ?? 0)
         let (events, sink) = AsyncThrowingStream<LlamaTurnCore.Event, any Error>.makeStream()
         let core = self.core
         let activity = self.activity
@@ -311,8 +361,8 @@ final class LlamaTurnEngine: GGUFTurnEngine {
             case .prefilled(let report):
                 prefilled = report
                 record(report)
-            case .piece(let piece):
-                raw += piece
+            case .piece(let piece, let decoded):
+                raw += decoded
                 budget.produced += 1
                 if parser == nil {
                     show(piece, in: &budget, onPiece: onPiece)
@@ -320,6 +370,8 @@ final class LlamaTurnEngine: GGUFTurnEngine {
                     show(visible, in: &budget, onPiece: onPiece)
                 }
                 if let shouldStop, shouldStop(budget.produced) { break reading }
+            case .reasoning(let turn):
+                budget.record(turn)
             case .completed:
                 completed = true
             }
@@ -370,6 +422,15 @@ final class LlamaTurnCore: @unchecked Sendable {
         var toolRoundsRemain = false
         /// The text the KV cache holds, when the reply before ended by itself; `nil` starts from an empty cache.
         var resident: String? = nil
+        var reasoning = ReasoningPlan.automatic
+        /// Answer pieces allowed after the reasoning; `nil` leaves only `maxTokens`.
+        var answerTokens: Int? = nil
+        /// Tokens kept free for the reply when trimming; `nil` keeps `maxTokens`.
+        var replyReserve: Int? = nil
+        /// Reasoning pieces earlier rounds of the turn used against the budget.
+        var reasoningSpent = 0
+
+        var reserve: Int { replyReserve ?? maxTokens }
     }
 
     struct Prefill: Sendable {
@@ -387,7 +448,10 @@ final class LlamaTurnCore: @unchecked Sendable {
 
     enum Event: Sendable {
         case prefilled(Prefill)
-        case piece(String)
+        /// As shown, and as decoded into the context: they differ only for a forced reasoning close.
+        case piece(String, decoded: String)
+        /// The reply's reasoning and answer counts, once it stopped.
+        case reasoning(ReasoningTurn)
         /// The reply ended by itself (end of generation or a full window): the KV cache holds exactly the prompt and
         /// every piece, and no token is left queued.
         case completed
@@ -418,15 +482,14 @@ final class LlamaTurnCore: @unchecked Sendable {
             let (context, report) = try prepared(request)
             events.yield(.prefilled(report))
 
-            var produced = 0
-            let pieces = LocalLLMClientLlama.Generator(context: context)
-            for try await piece in pieces {
-                events.yield(.piece(piece))
-                produced += 1
-                if produced >= request.maxTokens || Task.isCancelled { break }
-            }
+            var source = ContextPieces(context: context)
+            let outcome = try await BudgetedDecode.runDecoded(
+                &source, plan: request.reasoning, maxTokens: request.maxTokens, answerTokens: request.answerTokens,
+                spent: request.reasoningSpent
+            ) { events.yield(.piece($0.visible, decoded: $0.decoded)) }
+            events.yield(.reasoning(outcome.turn))
             // A break leaves the last sampled token queued; the generator ending on its own does not.
-            if produced < request.maxTokens && !Task.isCancelled { events.yield(.completed) }
+            if outcome.endedByItself && !Task.isCancelled { events.yield(.completed) }
             events.finish()
         } catch {
             events.finish(throwing: error)
@@ -449,13 +512,13 @@ final class LlamaTurnCore: @unchecked Sendable {
             try request.renderer.render(messages, toolRoundsRemain: request.toolRoundsRemain)
         }
         let (history, prompt) = try fitter.fitted(LlamaChatNormalizer.normalize(request.messages),
-                                                  replyBudget: request.maxTokens, render: render)
+                                                  replyBudget: request.reserve, render: render)
         if let resident = request.resident, let context = liveContext,
            let suffix = reuse.suffix(of: prompt, after: resident), Self.decoded(suffix, into: context) {
             return (context, Prefill(history: history, prompt: prompt, rebuilt: false, reused: resident.utf8.count))
         }
         let (context, rebuilt) = try preparedContext()
-        let fitted = try prefill(history, prompt: prompt, budget: request.maxTokens, render: render, into: context)
+        let fitted = try prefill(history, prompt: prompt, budget: request.reserve, render: render, into: context)
         return (context, Prefill(history: fitted.history, prompt: fitted.prompt, rebuilt: rebuilt, reused: 0))
     }
 
@@ -503,6 +566,40 @@ final class LlamaTurnCore: @unchecked Sendable {
     }
 }
 
+// MARK: - ContextPieces
+
+/// A `Context`'s sampled pieces, and forced text decoded into it.
+struct ContextPieces: PieceSource {
+    let llama: LocalLLMClientLlama.Context
+    private var generator: LocalLLMClientLlama.TokenGenerator
+
+    init(context: LocalLLMClientLlama.Context) {
+        llama = context
+        generator = Self.generator(of: context)
+    }
+
+    mutating func next() async throws -> String? {
+        try await generator.next()
+    }
+
+    /// After a piece its sampled token is still queued in the batch: `flushing` decodes it first, or the forced text
+    /// would be placed at the same position. A new generator then samples from the forced text's last logits.
+    mutating func force(_ text: String, flushing: Bool) -> Bool {
+        do {
+            if flushing { try llama.decode() }
+            try llama.decode(text: text)
+        } catch {
+            return false
+        }
+        generator = Self.generator(of: llama)
+        return true
+    }
+
+    private static func generator(of context: LocalLLMClientLlama.Context) -> LocalLLMClientLlama.TokenGenerator {
+        LocalLLMClientLlama.Generator(context: context).makeAsyncIterator()
+    }
+}
+
 // MARK: - LlamaToolTurnEngine
 
 /// The tool-calling turn for call formats other than `<tool_call>` JSON (``LlamaPromptRenderer/asksForTaggedToolCalls``):
@@ -534,13 +631,15 @@ final class LlamaToolTurnEngine: GGUFTurnEngine {
         case cut
     }
 
-    /// Text and pieces across every round of a turn, which share `maxTokens`.
+    /// Text and pieces across every round of a turn, which share `maxTokens`; a reasoning budget adds nothing here.
     private struct Progress {
         let limit: Int
         var text = ""
         var produced = 0
         /// The visible text of the current round's reply.
         var roundText = ""
+        /// Counts only: LocalLLMClient owns this decode, so no block can be closed for the model.
+        var meter: ReasoningBudgetMeter
     }
 
     init(url: URL, parameter: LlamaClient.Parameter, renderer: LlamaPromptRenderer, client: LlamaClient) {
@@ -564,6 +663,7 @@ final class LlamaToolTurnEngine: GGUFTurnEngine {
     func respond(
         to messages: [LlamaChatMessage],
         maxTokens: Int,
+        reasoning: ReasoningPlan,
         toolLoop: ToolLoopContext,
         shouldStop: ((Int) -> Bool)?,
         onPiece: (String) -> Void
@@ -571,7 +671,9 @@ final class LlamaToolTurnEngine: GGUFTurnEngine {
         try await waitForDrain()
         try Task.checkCancellation()
 
-        var progress = Progress(limit: maxTokens)
+        let renderer = self.renderer.thinking(disabled: reasoning.rendersWithoutThinking)
+        var progress = Progress(limit: maxTokens,
+                                meter: ReasoningBudgetMeter(openedTag: reasoning.openedTag, budget: nil))
         var history = LlamaChatNormalizer.normalize(messages)
         var sent: (history: [LlamaChatMessage], prompt: String) = (history, "")
         var replies = 0
@@ -586,8 +688,8 @@ final class LlamaToolTurnEngine: GGUFTurnEngine {
                 }
                 replies += 1
                 progress.roundText = ""
-                let streamed = try await stream(history, toolRoundsRemain: rounds < limit, progress: &progress,
-                                                shouldStop: shouldStop, onPiece: onPiece)
+                let streamed = try await stream(history, renderer: renderer, toolRoundsRemain: rounds < limit,
+                                                progress: &progress, shouldStop: shouldStop, onPiece: onPiece)
                 history = streamed.history
                 sent = (streamed.history, streamed.prompt)
                 guard case .finished(let calls) = streamed.outcome else { return nil }
@@ -598,7 +700,8 @@ final class LlamaToolTurnEngine: GGUFTurnEngine {
                 history += Self.roundMessages(text: progress.roundText, calls: calls, results: results)
             }
         )
-        return GGUFTurnReply(text: progress.text, prompt: sent.prompt, history: sent.history, tools: summary)
+        return GGUFTurnReply(text: progress.text, prompt: sent.prompt, history: sent.history, tools: summary,
+                             reasoning: progress.meter.turn(renderedWithoutThinking: reasoning.rendersWithoutThinking))
     }
 
     /// One round as the conversation records it: the reply with its calls, then one tool turn per result.
@@ -612,12 +715,12 @@ final class LlamaToolTurnEngine: GGUFTurnEngine {
     /// that rendered; trimming drops whole exchanges before the newest user turn, never the rounds after it.
     private func stream(
         _ messages: [LlamaChatMessage],
+        renderer: LlamaPromptRenderer,
         toolRoundsRemain: Bool,
         progress: inout Progress,
         shouldStop: ((Int) -> Bool)?,
         onPiece: (String) -> Void
     ) async throws -> (outcome: Outcome, history: [LlamaChatMessage], prompt: String) {
-        let renderer = self.renderer
         let render = { (messages: [LlamaChatMessage]) throws -> String in
             try renderer.render(messages, toolRoundsRemain: toolRoundsRemain)
         }
@@ -659,6 +762,7 @@ final class LlamaToolTurnEngine: GGUFTurnEngine {
                     progress.text += piece
                     progress.roundText += piece
                     progress.produced += 1
+                    _ = progress.meter.record(piece)
                     onPiece(piece)
                     if progress.produced >= progress.limit || shouldStop?(progress.produced) == true {
                         return (.cut, history, prompt)

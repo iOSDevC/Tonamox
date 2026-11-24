@@ -15,7 +15,7 @@ import LocalLLMClientLlama
 ///
 /// On **macOS**, this backend is rarely selected since Macs typically have 16-96 GB RAM.
 @MainActor
-final class LayerStreamingBackend: InferenceBackend {
+final class LayerStreamingBackend: InferenceBackend, PromptReasoningReporting {
 
     // MARK: - State
 
@@ -32,6 +32,12 @@ final class LayerStreamingBackend: InferenceBackend {
     var toolLoop = ToolLoopOptions.default
     var onToolEvent: (@MainActor (ToolEvent) -> Void)?
     private(set) var lastToolTurn: ToolTurnSummary?
+    private var reasoningProfile = GGUFReasoningProfile.none
+    private(set) var lastReasoningTurn: ReasoningTurn?
+    /// Fixed at load, as in ``LlamaCppBackend``.
+    private(set) var contextWindow: Int?
+
+    var promptOpenedReasoningTag: String? { reasoningProfile.openedTag }
 
     var isLoaded: Bool { engine != nil }
     /// Tool names registered for function-calling — a testable view of what was threaded in (empty = none).
@@ -68,6 +74,8 @@ final class LayerStreamingBackend: InferenceBackend {
 
         let parameter = loadParameter()
         engine = try await GGUFTurnEngines.load(url: ggufURL, parameter: parameter, tools: tools)
+        contextWindow = parameter.context
+        reasoningProfile = engine.map { GGUFReasoningProfile(renderer: $0.renderer) } ?? .none
 
         onProgress("\(model.displayName) ready (streaming mode)")
     }
@@ -78,8 +86,14 @@ final class LayerStreamingBackend: InferenceBackend {
         maxTokens: Int,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
+        try await generate(prompt: prompt, systemPrompt: systemPrompt, maxTokens: maxTokens, reasoning: .automatic,
+                           onToken: onToken)
+    }
+
+    func generate(prompt: String, systemPrompt: String?, maxTokens: Int, reasoning: ReasoningOptions,
+                  onToken: @escaping @MainActor (String) -> Void) async throws -> String {
         try await turn(LlamaChatMessage.list(prompt: prompt, systemPrompt: systemPrompt), maxTokens: maxTokens,
-                       onToken: onToken)
+                       reasoning: reasoning, onToken: onToken)
     }
 
     /// A dedicated second context is exactly what a streaming-sized device cannot afford.
@@ -112,12 +126,29 @@ final class LayerStreamingBackend: InferenceBackend {
         maxTokens: Int,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
-        try await turn(LlamaChatMessage.list(from: messages), maxTokens: maxTokens, onToken: onToken)
+        try await generate(messages: messages, maxTokens: maxTokens, reasoning: .automatic, onToken: onToken)
+    }
+
+    func generate(messages: [[String: String]], maxTokens: Int, reasoning: ReasoningOptions,
+                  onToken: @escaping @MainActor (String) -> Void) async throws -> String {
+        try await turn(LlamaChatMessage.list(from: messages), maxTokens: maxTokens, reasoning: reasoning,
+                       onToken: onToken)
+    }
+
+    var reasoningSupport: ReasoningCapabilities {
+        guard let engine else { return .unsupported }
+        return ReasoningCapabilities(canDisableThinking: reasoningProfile.canDisableThinking,
+                                enforcesBudget: engine is LlamaTurnEngine)
+    }
+
+    func promptOpenedReasoningTag(for options: ReasoningOptions) -> String? {
+        reasoningProfile.openedTag(for: options)
     }
 
     private func turn(
         _ conversation: [LlamaChatMessage],
         maxTokens: Int,
+        reasoning: ReasoningOptions,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
         guard engine != nil else { throw TonamoxError.modelNotLoaded }
@@ -127,15 +158,20 @@ final class LayerStreamingBackend: InferenceBackend {
 
             memoryManager.refresh()
             // Adapt max tokens based on memory pressure
-            let safeMaxTokens = memoryManager.isUnderPressure ? min(maxTokens, 256) : maxTokens
+            let underPressure = memoryManager.isUnderPressure
+            let safeMaxTokens = underPressure ? min(maxTokens, 256) : maxTokens
+            // The reasoning budget comes on top of the answer's tokens, so the cap must shrink it too.
+            let plan = reasoningProfile.plan(for: reasoning)
             let memoryManager = memoryManager
 
             lastGenerationStats = nil
             lastToolTurn = nil
+            lastReasoningTurn = nil
             let loop = ToolLoopContext(options: toolLoop, onEvent: onToolEvent)
             let reply = try await engine.measuredTurn(
                 conversation,
                 maxTokens: safeMaxTokens,
+                reasoning: underPressure ? plan.cappingBudget(at: safeMaxTokens / 4) : plan,
                 backend: .layerStreaming,
                 source: .llamaStream(toolsRegistered: !tools.isEmpty),
                 toolLoop: loop,
@@ -145,11 +181,14 @@ final class LayerStreamingBackend: InferenceBackend {
             )
             lastGenerationStats = reply.stats
             lastToolTurn = reply.tools
+            lastReasoningTurn = reply.reasoning
             return reply.text
         }
     }
 
     func unload() {
+        contextWindow = nil
+        reasoningProfile = .none
         guard let engine else { return }
         self.engine = nil
         releasingEngine = engine
@@ -206,3 +245,4 @@ final class LayerStreamingBackend: InferenceBackend {
 }
 
 extension LayerStreamingBackend: ToolLoopHost {}
+extension LayerStreamingBackend: ReasoningControlHost {}

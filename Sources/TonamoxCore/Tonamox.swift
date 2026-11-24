@@ -78,6 +78,10 @@ public final class Tonamox {
     /// `nil` when it fit, the model does not run on MLX, or the last generation threw.
     public var lastContextOverflow: ContextWindowOverflow? { engine.lastContextOverflow }
 
+    /// The KV window, in tokens, the loaded model got on this device: llama.cpp's `n_ctx` for GGUF, the rotating
+    /// cache's size for MLX. `nil` before a load and for remote models. Prompt, reasoning and answer share it.
+    public var contextWindow: Int? { engine.backend.contextWindow }
+
     /// The last `stream(_:in:)` run. History calls wait for it, so a stopped stream stores its reply before the
     /// next prompt.
     var historyInFlight: Task<Void, Never>?
@@ -214,6 +218,96 @@ public final class Tonamox {
         }
     }
     
+    /// Awaitable form of ``stream(_:systemPrompt:maxTokens:constraint:)``: hands each new piece to `onPiece` and
+    /// returns only after the backend stopped, cancellation included. Use it inside `GenerationTurnstile.run`,
+    /// where leaving a `stream` loop early would end the turn while the cancelled decode is still running.
+    ///
+    /// `reasoning` overrides ``reasoning`` for this call. With a budget, `maxTokens` is the answer's and the
+    /// reasoning may take up to the budget on top; a block the budget closed arrives with its closing tag, as if the
+    /// model had written it (``lastReasoningTurn`` says so).
+    public func generate(
+        _ prompt: String,
+        systemPrompt: String? = nil,
+        maxTokens: Int = 1024,
+        reasoning: ReasoningOptions? = nil,
+        onPiece: @escaping @MainActor (String) -> Void
+    ) async throws {
+        var lastLength = 0
+        _ = try await engine.generate(prompt: prompt, systemPrompt: systemPrompt, maxTokens: maxTokens,
+                                      reasoning: reasoning) {
+            @MainActor partial in
+            let newText = String(partial.dropFirst(lastLength))
+            lastLength = partial.count
+            if !newText.isEmpty { onPiece(newText) }
+        }
+    }
+
+    /// Multi-turn variant of ``stream(_:systemPrompt:maxTokens:constraint:)`` for the local server: `messages` are
+    /// `["role": …, "content": …]` turns. Terminating the stream cancels the decode, as `stream` does.
+    package func streamMessages(
+        _ messages: [[String: String]],
+        maxTokens: Int
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task { @MainActor in
+                do {
+                    try await self.generateMessages(messages, maxTokens: maxTokens) { continuation.yield($0) }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Awaitable form of ``streamMessages(_:maxTokens:)`` that hands each new piece to `onPiece`. It returns only
+    /// after the backend stopped, so a cancelled caller can wait for the decode to unwind before starting another.
+    /// `reasoning` behaves as in ``generate(_:systemPrompt:maxTokens:reasoning:onPiece:)``.
+    package func generateMessages(_ messages: [[String: String]], maxTokens: Int, reasoning: ReasoningOptions? = nil,
+                                  onPiece: @escaping @MainActor (String) -> Void) async throws {
+        var lastLength = 0
+        _ = try await engine.generate(messages: messages, maxTokens: maxTokens, reasoning: reasoning) {
+            @MainActor partial in
+            let newText = String(partial.dropFirst(lastLength))
+            lastLength = partial.count
+            if !newText.isEmpty { onPiece(newText) }
+        }
+    }
+
+    /// `true` when the instance was loaded with tools; the local server refuses to serve such an instance.
+    package var isToolEnabled: Bool { engine.toolsEnabled }
+
+    /// `<think>` or `<thought>` when the loaded GGUF's chat template ends every prompt with that opening tag, so the
+    /// output starts inside a reasoning block and carries only its closing tag. Feed it to a ``ReasoningSplitter``
+    /// before the output. `nil` before a load, when the template opens no block, and for MLX and remote models,
+    /// which are not inspected. Rendered with ``reasoning``; see ``promptOpenedReasoningTag(for:)``.
+    public var promptOpenedReasoningTag: String? {
+        engine.promptOpenedReasoningTag(for: engine.reasoning)
+    }
+
+    /// As ``promptOpenedReasoningTag`` for a call made with `options`: a template rendered with thinking disabled
+    /// usually closes the block itself.
+    public func promptOpenedReasoningTag(for options: ReasoningOptions) -> String? {
+        engine.promptOpenedReasoningTag(for: options)
+    }
+
+    /// What text generations reason with when a call passes no options (default ``ReasoningOptions/automatic``).
+    /// Read when a turn starts. Instances from ``ModelManager`` are shared, so this applies to every caller of the
+    /// cached instance; prefer the per-call `reasoning:` argument.
+    public var reasoning: ReasoningOptions {
+        get { engine.reasoning }
+        set { engine.reasoning = newValue }
+    }
+
+    /// What the loaded backend can do with ``ReasoningOptions``; ``ReasoningCapabilities/unsupported`` before a load and
+    /// for MLX, Apple Intelligence and remote models.
+    public var reasoningSupport: ReasoningCapabilities { engine.reasoningSupport }
+
+    /// What reasoning control did in the last generation; `nil` before the first, after one that threw, after a
+    /// constrained call, and for backends without reasoning control.
+    public var lastReasoningTurn: ReasoningTurn? { engine.lastReasoningTurn }
+
     // MARK: - Vision API
     
     /// Ask a question about an image (or text-only if image is nil).

@@ -88,6 +88,15 @@ final class GenerationStatsTests: XCTestCase {
         XCTAssertNil(RemoteBackend(target: target).lastGenerationStats)
     }
 
+    func testBackendsReportNoWindowBeforeALoad() {
+        let gguf = Model.dolphin3_qwen25_1_5b_gguf
+        XCTAssertNil(LlamaCppBackend(model: gguf).contextWindow)
+        XCTAssertNil(LayerStreamingBackend(model: gguf).contextWindow)
+        XCTAssertNil(Tonamox(model: gguf).contextWindow)
+        let target = RemoteTarget(provider: SilentProvider(), modelID: "fake", contextLength: 8192, origin: .cloud)
+        XCTAssertNil(RemoteBackend(target: target).contextWindow)
+    }
+
     func testFailedGenerationLeavesNoStats() async {
         let backend = LlamaCppBackend(model: .dolphin3_qwen25_1_5b_gguf)
         _ = try? await backend.generate(prompt: "x", systemPrompt: nil, maxTokens: 8) { _ in }

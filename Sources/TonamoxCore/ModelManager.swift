@@ -354,7 +354,8 @@ public final class ModelManager: ObservableObject {
         guard !tools.isEmpty,
               let loaded = cache.first(where: { $0.key.base == model })?.value.engine.backend as? MLXBackend,
               let backend = loaded.sharingWeights(sampling: sampling, tools: tools) else { return nil }
-        let instance = Tonamox(engine: TonamoxEngine(model: model, backend: backend), sampling: sampling)
+        let instance = Tonamox(engine: TonamoxEngine(model: model, backend: backend, toolsEnabled: true),
+                               sampling: sampling)
         try await instance.engine.load { _ in }
         return instance
         #else

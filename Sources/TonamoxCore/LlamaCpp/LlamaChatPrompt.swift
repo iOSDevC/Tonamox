@@ -91,6 +91,14 @@ enum LlamaChatNormalizer {
     }
 }
 
+// MARK: - PromptReasoningReporting
+
+/// A backend that knows whether its chat template opens a reasoning block in the prompt.
+@MainActor
+protocol PromptReasoningReporting: AnyObject {
+    var promptOpenedReasoningTag: String? { get }
+}
+
 // MARK: - LlamaPromptRenderer
 
 /// Renders a conversation with the GGUF's own chat template with the same Jinja engine, context variables, message
@@ -102,6 +110,13 @@ struct LlamaPromptRenderer: Sendable {
     let template: String?
     let specialTokens: [String: String]
     let tools: [AnyLLMTool]
+    /// Renders with `enable_thinking = false`; only on a template where that changes the prompt
+    /// (``canDisableThinking``).
+    let rendersWithoutThinking: Bool
+    /// Rendering one user turn with `enable_thinking = false` gives another prompt than the template's default.
+    /// Worked out once, by rendering: a template that only names the variable, in a comment or with a default that is
+    /// already off, does not count.
+    let canDisableThinking: Bool
     private let parsed: Result<Template, any Error>?
 
     enum RenderError: LocalizedError {
@@ -116,8 +131,11 @@ struct LlamaPromptRenderer: Sendable {
 
     init(template: String?, specialTokens: [String: String] = [:], tools: [AnyLLMTool] = []) {
         let source = template.map(Self.patched)
-        self.init(patchedTemplate: source, specialTokens: specialTokens, tools: tools,
-                  parsed: source.map { text in Result<Template, any Error> { try Template(text) } })
+        let parsed = source.map { text in Result<Template, any Error> { try Template(text) } }
+        let probe = LlamaPromptRenderer(patchedTemplate: source, specialTokens: specialTokens, tools: [],
+                                        rendersWithoutThinking: false, canDisableThinking: false, parsed: parsed)
+        self.init(patchedTemplate: source, specialTokens: specialTokens, tools: tools, rendersWithoutThinking: false,
+                  canDisableThinking: probe.switchesThinking, parsed: parsed)
     }
 
     init(metadata: GGUFChatMetadata, tools: [any LLMTool]) {
@@ -127,17 +145,39 @@ struct LlamaPromptRenderer: Sendable {
 
     /// `patched` is not idempotent (it drops a trailing newline), so a renderer built from another keeps its source.
     private init(patchedTemplate: String?, specialTokens: [String: String], tools: [AnyLLMTool],
-                 parsed: Result<Template, any Error>?) {
+                 rendersWithoutThinking: Bool, canDisableThinking: Bool, parsed: Result<Template, any Error>?) {
         template = patchedTemplate
         self.specialTokens = specialTokens
         self.tools = tools
+        self.rendersWithoutThinking = rendersWithoutThinking
+        self.canDisableThinking = canDisableThinking
         self.parsed = parsed
     }
 
     /// Same template and tokens, no tool instructions: what a constrained call sends.
     var withoutTools: LlamaPromptRenderer {
         tools.isEmpty ? self
-            : LlamaPromptRenderer(patchedTemplate: template, specialTokens: specialTokens, tools: [], parsed: parsed)
+            : LlamaPromptRenderer(patchedTemplate: template, specialTokens: specialTokens, tools: [],
+                                  rendersWithoutThinking: rendersWithoutThinking,
+                                  canDisableThinking: canDisableThinking, parsed: parsed)
+    }
+
+    /// Measured on a tool-free renderer; the text check only skips the two renders.
+    private var switchesThinking: Bool {
+        guard let template, parsed != nil, template.contains("enable_thinking") else { return false }
+        let off = LlamaPromptRenderer(patchedTemplate: template, specialTokens: specialTokens, tools: [],
+                                      rendersWithoutThinking: true, canDisableThinking: true, parsed: parsed)
+        guard let on = try? render([.user("Hi")]), let without = try? off.render([.user("Hi")]) else { return false }
+        return on != without
+    }
+
+    /// The same renderer with `enable_thinking = false`, or as it is when the template cannot disable thinking.
+    func thinking(disabled: Bool) -> LlamaPromptRenderer {
+        let wanted = disabled && canDisableThinking
+        guard wanted != rendersWithoutThinking else { return self }
+        return LlamaPromptRenderer(patchedTemplate: template, specialTokens: specialTokens, tools: tools,
+                                   rendersWithoutThinking: wanted, canDisableThinking: canDisableThinking,
+                                   parsed: parsed)
     }
 
     /// How message content reaches the template. LocalLLMClient picks one per template family.
@@ -270,6 +310,7 @@ struct LlamaPromptRenderer: Sendable {
         if !tools.isEmpty && nativeTools {
             context["tools"] = try Value(any: tools.map { $0.toOAICompatJSON() })
         }
+        if rendersWithoutThinking { context["enable_thinking"] = .boolean(false) }
 
         // LocalLLMClient sets these on the environment, which this Jinja ignores; setting them the same way keeps
         // the two renderings identical if that ever changes.
@@ -453,6 +494,14 @@ struct LlamaPromptRenderer: Sendable {
         You SHOULD NOT include any other text in the response if you call a function
         \(toolsJSON)\n
         """
+    }
+
+    /// `<think>` or `<thought>` when the generation prompt ends with that opening tag (DeepSeek-R1 distills,
+    /// Qwen3 thinking builds): the output then starts inside the block and carries only its closing tag.
+    var reasoningTagOpenedByPrompt: String? {
+        guard template != nil, let rendered = try? withoutTools.render([.user("Hi")]) else { return nil }
+        let tail = rendered.trimmingCharacters(in: .whitespacesAndNewlines).suffix(16).lowercased()
+        return ["<think>", "<thought>"].first { tail.hasSuffix($0) }
     }
 
     // MARK: Fallbacks

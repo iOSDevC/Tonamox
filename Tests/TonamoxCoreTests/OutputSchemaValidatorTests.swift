@@ -299,6 +299,20 @@ final class OutputSchemaValidatorTests: XCTestCase {
         XCTAssertEqual(OutputSchemaValidator.withoutReasoning("no reasoning"), "no reasoning")
     }
 
+    func testThoughtBlocksAndUppercaseTagsAreDroppedToo() throws {
+        let aged = try compile(#"{"type":"object","required":["age"]}"#)
+        XCTAssertEqual(try aged.conformingJSON(in: "<thought>try {\"x\":0}</thought>\n{\"age\":1}"), #"{"age":1}"#)
+        XCTAssertEqual(try aged.conformingJSON(in: "draft {\"x\":0}</THOUGHT>{\"age\":1}"), #"{"age":1}"#)
+        XCTAssertNil(OutputSchemaValidator.extractJSON(from: "<Thought>maybe {\"age\":1}"))
+        XCTAssertEqual(OutputSchemaValidator.withoutReasoning("a<THINK>b</think>c<thought>d</thought>e"), "ace")
+    }
+
+    func testTagInsideAJSONStringStillFindsTheValue() {
+        XCTAssertEqual(OutputSchemaValidator.extractJSON(from: #"Here: {"tag":"</thought>"}"#), #"{"tag":"</thought>"}"#)
+        XCTAssertEqual(OutputSchemaValidator.extractJSON(from: #"Here: {"tag":"</THINK>"} ok"#), #"{"tag":"</THINK>"}"#)
+        XCTAssertNil(OutputSchemaValidator.extractJSON(from: "<think>maybe {\"age\":1}"))
+    }
+
     func testParsingIsStrictJSON() throws {
         let anything = try compile("true")
         let notJSON = [OutputSchemaViolation(path: "", message: "not valid JSON")]

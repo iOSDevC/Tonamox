@@ -98,9 +98,10 @@ public struct OutputSchemaValidator: Sendable {
     }
 
     /// The first JSON value in raw model output. Candidates, in order: the whole trimmed text; then, with
-    /// `<think>…</think>` reasoning dropped, the whole text again, each ```` ```json ```` (or bare ```` ``` ````)
-    /// fenced block, and each top-level balanced `{…}` or `[…]`. A candidate counts only when it parses as strict
-    /// JSON; brace matching skips string literals. `nil` when none is found.
+    /// `<think>…</think>` and `<thought>…</thought>` reasoning dropped, the whole text again, each
+    /// ```` ```json ```` (or bare ```` ``` ````) fenced block, and each top-level balanced `{…}` or `[…]`; when those find nothing, the balanced values of the
+    /// unstripped text that themselves contain a reasoning tag (`{"tag":"</think>"}`). A candidate counts only when it parses as strict JSON; brace matching skips string literals.
+    /// `nil` when none is found.
     public static func extractJSON(from output: String) -> String? {
         candidates(in: output).first?.text
     }
@@ -118,7 +119,11 @@ extension OutputSchemaValidator {
         if let whole = candidate(output[...]) { return [whole] }
         let answer = withoutReasoning(output)
         if let whole = candidate(answer[...]) { return [whole] }
-        return fencedBlocks(in: answer).compactMap(candidate) + balancedValues(in: answer)
+        let found = fencedBlocks(in: answer).compactMap(candidate) + balancedValues(in: answer)
+        guard found.isEmpty, answer != output else { return found }
+        // A tag inside a JSON string (`{"tag":"</think>"}`) stripped the value itself. Only a value holding a tag
+        // comes back, so JSON written inside the reasoning still does not count.
+        return balancedValues(in: output).filter { withoutReasoning($0.text) != $0.text }
     }
 
     private static func candidate(_ text: Substring) -> Candidate? {
@@ -126,19 +131,28 @@ extension OutputSchemaValidator {
         return JSONValue.parse(trimmed).map { Candidate(text: trimmed, value: $0) }
     }
 
-    /// Drops `<think>…</think>` spans, a reasoning prefix closed by a lone `</think>` (chat templates that open
-    /// the block in the prompt), and an unterminated `<think>` with everything after it.
+    /// Drops `<think>…</think>` and `<thought>…</thought>` spans anywhere (tag names case-insensitive), a reasoning
+    /// prefix closed by a lone closing tag (chat templates that open the block in the prompt), and an unterminated
+    /// opening tag with everything after it. Unlike ``ReasoningSplitter``, spans after the start are dropped too:
+    /// JSON is never inside one.
     static func withoutReasoning(_ text: String) -> String {
+        ["think", "thought"].reduce(text) { without(blocksNamed: $1, in: $0) }
+    }
+
+    private static func without(blocksNamed name: String, in text: String) -> String {
+        let open = "<\(name)>", close = "</\(name)>"
         var rest = text[...]
-        if let close = rest.range(of: "</think>"),
-           rest.range(of: "<think>").map({ $0.lowerBound > close.lowerBound }) ?? true {
-            rest = rest[close.upperBound...]
+        if let lone = rest.range(of: close, options: .caseInsensitive),
+           rest.range(of: open, options: .caseInsensitive).map({ $0.lowerBound > lone.lowerBound }) ?? true {
+            rest = rest[lone.upperBound...]
         }
         var answer = ""
-        while let open = rest.range(of: "<think>") {
-            answer += rest[..<open.lowerBound]
-            guard let close = rest[open.upperBound...].range(of: "</think>") else { return answer }
-            rest = rest[close.upperBound...]
+        while let opening = rest.range(of: open, options: .caseInsensitive) {
+            answer += rest[..<opening.lowerBound]
+            guard let closing = rest[opening.upperBound...].range(of: close, options: .caseInsensitive) else {
+                return answer
+            }
+            rest = rest[closing.upperBound...]
         }
         return answer + rest
     }

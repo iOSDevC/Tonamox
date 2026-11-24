@@ -58,11 +58,16 @@ public protocol InferenceBackend: AnyObject {
 
     /// Set when the last generation outgrew a KV cache that drops history silently (MLX); `nil` otherwise.
     var lastContextOverflow: ContextWindowOverflow? { get }
+
+    /// The KV window, in tokens, the loaded model was given on this device; `nil` before a load and for backends
+    /// that do not set one (remote models, Apple Intelligence).
+    var contextWindow: Int? { get }
 }
 
 public extension InferenceBackend {
     var lastGenerationStats: GenerationStats? { nil }
     var lastContextOverflow: ContextWindowOverflow? { nil }
+    var contextWindow: Int? { nil }
 }
 
 // MARK: - BackendKind

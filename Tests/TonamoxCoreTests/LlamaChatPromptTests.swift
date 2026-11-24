@@ -88,6 +88,22 @@ final class LlamaChatPromptTests: XCTestCase {
         """)
     }
 
+    func testGenerationPromptThatOpensAReasoningBlockIsDetected() {
+        let opening = Self.chatML.replacingOccurrences(of: "'<|im_start|>assistant\\n'",
+                                                       with: "'<|im_start|>assistant\\n<think>\\n'")
+        XCTAssertNotEqual(opening, Self.chatML)
+        XCTAssertEqual(LlamaPromptRenderer(template: opening).reasoningTagOpenedByPrompt, "<think>")
+        let thought = Self.chatML.replacingOccurrences(of: "'<|im_start|>assistant\\n'",
+                                                       with: "'<|im_start|>assistant\\n<THOUGHT>'")
+        XCTAssertEqual(LlamaPromptRenderer(template: thought).reasoningTagOpenedByPrompt, "<thought>")
+        // Qwen3 with thinking off renders an empty, closed block: nothing is left open.
+        let closed = Self.chatML.replacingOccurrences(of: "'<|im_start|>assistant\\n'",
+                                                      with: "'<|im_start|>assistant\\n<think>\\n\\n</think>\\n\\n'")
+        XCTAssertNil(LlamaPromptRenderer(template: closed).reasoningTagOpenedByPrompt)
+        XCTAssertNil(LlamaPromptRenderer(template: Self.chatML).reasoningTagOpenedByPrompt)
+        XCTAssertNil(LlamaPromptRenderer(template: nil).reasoningTagOpenedByPrompt)
+    }
+
     func testBOSComesFromTheSpecialTokensExactlyOnce() throws {
         let renderer = LlamaPromptRenderer(template: "{{ bos_token }}" + Self.chatML, specialTokens: ["bos_token": "<s>"])
         let rendered = try renderer.render([.user("Hi")])

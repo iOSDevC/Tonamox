@@ -11,7 +11,7 @@ import LocalLLMClientLlama
 ///
 /// For models too large for monolithic loading, see ``LayerStreamingBackend``.
 @MainActor
-final class LlamaCppBackend: InferenceBackend {
+final class LlamaCppBackend: InferenceBackend, PromptReasoningReporting {
 
     // MARK: - State
 
@@ -31,6 +31,13 @@ final class LlamaCppBackend: InferenceBackend {
     var toolLoop = ToolLoopOptions.default
     var onToolEvent: (@MainActor (ToolEvent) -> Void)?
     private(set) var lastToolTurn: ToolTurnSummary?
+    /// Read from the template once per load.
+    private var reasoningProfile = GGUFReasoningProfile.none
+    private(set) var lastReasoningTurn: ReasoningTurn?
+    /// Fixed at load: ``contextSize()`` follows free memory, so a later reading could differ from the real window.
+    private(set) var contextWindow: Int?
+
+    var promptOpenedReasoningTag: String? { reasoningProfile.openedTag }
 
     var isLoaded: Bool { engine != nil }
     /// Tool names registered for function-calling — a testable view of what was threaded in (empty = none).
@@ -72,6 +79,8 @@ final class LlamaCppBackend: InferenceBackend {
         // their results back transparently.
         engine = try await GGUFTurnEngines.load(url: ggufURL, parameter: parameter, tools: tools)
         loadedFileURL = ggufURL
+        contextWindow = parameter.context
+        reasoningProfile = engine.map { GGUFReasoningProfile(renderer: $0.renderer) } ?? .none
 
         onProgress("\(model.displayName) ready")
     }
@@ -82,8 +91,14 @@ final class LlamaCppBackend: InferenceBackend {
         maxTokens: Int,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
+        try await generate(prompt: prompt, systemPrompt: systemPrompt, maxTokens: maxTokens, reasoning: .automatic,
+                           onToken: onToken)
+    }
+
+    func generate(prompt: String, systemPrompt: String?, maxTokens: Int, reasoning: ReasoningOptions,
+                  onToken: @escaping @MainActor (String) -> Void) async throws -> String {
         try await turn(LlamaChatMessage.list(prompt: prompt, systemPrompt: systemPrompt), maxTokens: maxTokens,
-                       onToken: onToken)
+                       reasoning: reasoning, onToken: onToken)
     }
 
     // Pinned LocalLLMClient never resets its sampler (contrib/localllmclient/0003): each call gets its own client.
@@ -119,6 +134,7 @@ final class LlamaCppBackend: InferenceBackend {
             guard self.engine != nil, let loadedFileURL else { throw TonamoxError.modelNotLoaded }
             lastGenerationStats = nil
             lastToolTurn = nil
+            lastReasoningTurn = nil
             let reply = try await Self.generateOnDedicatedClient(
                 url: loadedFileURL,
                 parameter: parameter,
@@ -152,13 +168,30 @@ final class LlamaCppBackend: InferenceBackend {
         maxTokens: Int,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
-        try await turn(LlamaChatMessage.list(from: messages), maxTokens: maxTokens, onToken: onToken)
+        try await generate(messages: messages, maxTokens: maxTokens, reasoning: .automatic, onToken: onToken)
+    }
+
+    func generate(messages: [[String: String]], maxTokens: Int, reasoning: ReasoningOptions,
+                  onToken: @escaping @MainActor (String) -> Void) async throws -> String {
+        try await turn(LlamaChatMessage.list(from: messages), maxTokens: maxTokens, reasoning: reasoning,
+                       onToken: onToken)
+    }
+
+    var reasoningSupport: ReasoningCapabilities {
+        guard let engine else { return .unsupported }
+        return ReasoningCapabilities(canDisableThinking: reasoningProfile.canDisableThinking,
+                                enforcesBudget: engine is LlamaTurnEngine)
+    }
+
+    func promptOpenedReasoningTag(for options: ReasoningOptions) -> String? {
+        reasoningProfile.openedTag(for: options)
     }
 
     /// One turn over the whole conversation, with its roles.
     private func turn(
         _ conversation: [LlamaChatMessage],
         maxTokens: Int,
+        reasoning: ReasoningOptions,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
         guard engine != nil else { throw TonamoxError.modelNotLoaded }
@@ -167,10 +200,12 @@ final class LlamaCppBackend: InferenceBackend {
             guard let engine else { throw TonamoxError.modelNotLoaded }
             lastGenerationStats = nil
             lastToolTurn = nil
+            lastReasoningTurn = nil
             let loop = ToolLoopContext(options: toolLoop, onEvent: onToolEvent)
             let reply = try await engine.measuredTurn(
                 conversation,
                 maxTokens: maxTokens,
+                reasoning: reasoningProfile.plan(for: reasoning),
                 backend: .llamaCpp,
                 source: .llamaStream(toolsRegistered: !tools.isEmpty),
                 toolLoop: loop,
@@ -178,12 +213,15 @@ final class LlamaCppBackend: InferenceBackend {
             )
             lastGenerationStats = reply.stats
             lastToolTurn = reply.tools
+            lastReasoningTurn = reply.reasoning
             return reply.text
         }
     }
 
     func unload() {
         loadedFileURL = nil
+        contextWindow = nil
+        reasoningProfile = .none
         guard let engine else { return }
         self.engine = nil
         releasingEngine = engine
@@ -318,6 +356,7 @@ final class LlamaCppBackend: InferenceBackend {
 }
 
 extension LlamaCppBackend: ToolLoopHost {}
+extension LlamaCppBackend: ReasoningControlHost {}
 
 // MARK: - GenerationConstraint → LocalLLMClient
 

@@ -38,6 +38,12 @@ final class TonamoxEngine {
     }
     /// Kept the same way as ``lastGenerationStats``.
     private(set) var lastToolTurn: ToolTurnSummary?
+    /// What text generations without explicit options reason with; backends without reasoning control ignore it.
+    var reasoning = ReasoningOptions.automatic
+    /// Kept the same way as ``lastGenerationStats``.
+    private(set) var lastReasoningTurn: ReasoningTurn?
+    /// The backend was built with tools, so a prompt can make it call them.
+    let toolsEnabled: Bool
 
     // MARK: - Init
 
@@ -46,13 +52,16 @@ final class TonamoxEngine {
         self.model = model
         self.backend = BackendRouter.selectBackend(for: model, sampling: sampling, tools: tools)
         self.appLifecycle = lifecycle
+        self.toolsEnabled = !tools.isEmpty
     }
 
     /// Create an engine with a specific backend (used by BackendRouter for GGUF models).
-    init(model: Model, backend: any InferenceBackend, lifecycle: BackgroundLifecycle = .shared) {
+    init(model: Model, backend: any InferenceBackend, lifecycle: BackgroundLifecycle = .shared,
+         toolsEnabled: Bool = false) {
         self.model = model
         self.backend = backend
         self.appLifecycle = lifecycle
+        self.toolsEnabled = toolsEnabled
     }
 
     // MARK: - Load
@@ -69,9 +78,11 @@ final class TonamoxEngine {
         systemPrompt: String? = nil,
         maxTokens: Int = 1024,
         constraint: GenerationConstraint? = nil,
+        reasoning explicit: ReasoningOptions? = nil,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
-        try await recordingStats(onToken: onToken) { [self] onToken in
+        let reasoning = explicit ?? self.reasoning
+        return try await recordingStats(onToken: onToken) { [self] onToken in
             if let constraint {
                 return try await backend.generate(
                     prompt: prompt,
@@ -80,6 +91,10 @@ final class TonamoxEngine {
                     constraint: constraint,
                     onToken: onToken
                 )
+            }
+            if let host = backend as? any ReasoningControlHost {
+                return try await host.generate(prompt: prompt, systemPrompt: systemPrompt, maxTokens: maxTokens,
+                                               reasoning: reasoning, onToken: onToken)
             }
             return try await backend.generate(
                 prompt: prompt,
@@ -113,10 +128,16 @@ final class TonamoxEngine {
     func generate(
         messages: [[String: String]],
         maxTokens: Int = 1024,
+        reasoning explicit: ReasoningOptions? = nil,
         onToken: @escaping @MainActor (String) -> Void
     ) async throws -> String {
-        try await recordingStats(onToken: onToken) { [self] onToken in
-            try await backend.generate(
+        let reasoning = explicit ?? self.reasoning
+        return try await recordingStats(onToken: onToken) { [self] onToken in
+            if let host = backend as? any ReasoningControlHost {
+                return try await host.generate(messages: messages, maxTokens: maxTokens, reasoning: reasoning,
+                                               onToken: onToken)
+            }
+            return try await backend.generate(
                 messages: messages,
                 maxTokens: maxTokens,
                 onToken: onToken
@@ -131,11 +152,23 @@ final class TonamoxEngine {
         lastGenerationStats = nil
         lastContextOverflow = nil
         lastToolTurn = nil
+        lastReasoningTurn = nil
         let reply = try await supervised(onToken: onToken, body)
         lastGenerationStats = backend.lastGenerationStats
         lastContextOverflow = backend.lastContextOverflow
         lastToolTurn = (backend as? any ToolLoopHost)?.lastToolTurn
+        lastReasoningTurn = (backend as? any ReasoningControlHost)?.lastReasoningTurn
         return reply
+    }
+
+    var reasoningSupport: ReasoningCapabilities {
+        (backend as? any ReasoningControlHost)?.reasoningSupport ?? .unsupported
+    }
+
+    /// A host's `nil` is an answer (thinking disabled closes the block in the prompt), not a reason to fall back.
+    func promptOpenedReasoningTag(for options: ReasoningOptions) -> String? {
+        if let host = backend as? any ReasoningControlHost { return host.promptOpenedReasoningTag(for: options) }
+        return (backend as? any PromptReasoningReporting)?.promptOpenedReasoningTag
     }
 
     // MARK: - Cleanup
