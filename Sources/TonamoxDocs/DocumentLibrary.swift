@@ -307,14 +307,7 @@ public actor DocumentLibrary {
             throw DocumentError.libraryNotReady
         }
         
-        var retrieved: [VectorStore.SearchResult]?
-        for _ in 0..<Self.maxProviderSwitches where retrieved == nil {
-            retrieved = try await retrieve(question, topK: topK)
-        }
-        guard let results = retrieved else {
-            throw DocumentError.embeddingFailed("The embedding provider kept changing while the question was embedded")
-        }
-        
+        let results = try await retrieveTolerantly(question, topK: topK)
         guard !results.isEmpty else {
             return DocumentAnswer(
                 text:    "No relevant information found in the indexed documents.",
@@ -341,17 +334,38 @@ public actor DocumentLibrary {
             """
         
         let answer = try await llm.chat(prompt, systemPrompt: sys)
-        
-        let sources = results.map { r in
-            DocumentAnswer.SourceReference(
-                documentTitle: r.chunk.documentTitle,
-                pageNumber:    r.chunk.pageNumber,
-                excerpt:       String(r.chunk.text.prefix(200)),
-                score:         r.score
-            )
+        return DocumentAnswer(text: answer, sources: results.map(Self.sourceReference(from:)))
+    }
+
+    /// The passages ``ask(_:topK:maxContextTokens:systemPrompt:)`` would ground its answer in, without generating
+    /// one: needs the embedding provider from ``configure(embeddingProvider:llm:visionLLM:)`` but never calls or
+    /// loads the LLM. Same ranking and excerpt rules as `ask`; empty when nothing matches.
+    public func search(_ query: String, topK: Int = 5) async throws -> [DocumentAnswer.SourceReference] {
+        guard embeddingProvider != nil else {
+            throw DocumentError.libraryNotReady
         }
-        
-        return DocumentAnswer(text: answer, sources: sources)
+        return try await retrieveTolerantly(query, topK: topK).map(Self.sourceReference(from:))
+    }
+
+    private static func sourceReference(from result: VectorStore.SearchResult) -> DocumentAnswer.SourceReference {
+        DocumentAnswer.SourceReference(
+            documentTitle: result.chunk.documentTitle,
+            pageNumber:    result.chunk.pageNumber,
+            excerpt:       String(result.chunk.text.prefix(200)),
+            score:         result.score
+        )
+    }
+
+    /// ``retrieve(_:topK:)`` again while the provider keeps changing, up to ``maxProviderSwitches`` times.
+    private func retrieveTolerantly(_ question: String, topK: Int) async throws -> [VectorStore.SearchResult] {
+        var retrieved: [VectorStore.SearchResult]?
+        for _ in 0..<Self.maxProviderSwitches where retrieved == nil {
+            retrieved = try await retrieve(question, topK: topK)
+        }
+        guard let results = retrieved else {
+            throw DocumentError.embeddingFailed("The embedding provider kept changing while the question was embedded")
+        }
+        return results
     }
     
     /// Hybrid retrieval with the query embedded by the configured provider; `nil` when the stored vectors

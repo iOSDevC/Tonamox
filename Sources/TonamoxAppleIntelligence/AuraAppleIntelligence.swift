@@ -3,12 +3,18 @@ import FoundationModels
 
 // MARK: - AISessionError
 
-@available(iOS 26, macOS 26, *)
-public enum AISessionError: LocalizedError {
+@available(iOS 27, macOS 27, visionOS 27, *)
+public enum AISessionError: LocalizedError, Equatable {
     case modelUnavailable(reason: String)
+    /// The on-device model's assets are missing or still downloading.
+    case assetsUnavailable(String)
     case guardrailViolation(String)
-    case contextWindowExceeded
-    case rateLimited
+    case refusal(String)
+    case contextWindowExceeded(limit: Int, tokenCount: Int)
+    /// The language of the prompt or the locale is not supported; carries the language code.
+    case unsupportedLanguage(String)
+    case rateLimited(resetDate: Date?)
+    case timeout
     case concurrentRequest
     case generationFailed(String)
 
@@ -16,16 +22,72 @@ public enum AISessionError: LocalizedError {
         switch self {
         case .modelUnavailable(let reason):
             return "Apple Intelligence unavailable: \(reason)"
+        case .assetsUnavailable:
+            return "The on-device model is not ready yet. Try again later."
         case .guardrailViolation(let detail):
             return "Content triggered safety filters: \(detail)"
-        case .contextWindowExceeded:
-            return "Context window exceeded. Try a shorter prompt or start a new session."
+        case .refusal(let detail):
+            return "The model declined the request: \(detail)"
+        case .contextWindowExceeded(let limit, let tokenCount):
+            return "Context window exceeded (\(tokenCount) of \(limit) tokens). Try a shorter prompt or start a new session."
+        case .unsupportedLanguage(let language):
+            return "The language or locale is not supported (\(language))."
         case .rateLimited:
             return "Too many requests. Please wait a moment."
+        case .timeout:
+            return "The model took too long to answer."
         case .concurrentRequest:
             return "Another request is already in progress."
         case .generationFailed(let detail):
             return "Generation failed: \(detail)"
+        }
+    }
+
+    /// Maps the FoundationModels OS 27 errors into `AISessionError`; any other error (a tool's
+    /// `ToolCallError`, `CancellationError`) is returned unchanged.
+    static func mapped(_ error: any Error) -> any Error {
+        switch error {
+        case let model as LanguageModelError:
+            return mapped(model)
+        case let system as SystemLanguageModel.Error:
+            switch system {
+            case .assetsUnavailable(let detail): return AISessionError.assetsUnavailable(detail.debugDescription)
+            @unknown default: return AISessionError.generationFailed(String(describing: system))
+            }
+        case let session as LanguageModelSession.Error:
+            switch session {
+            case .concurrentRequests, .transcriptMutationWhileResponding: return AISessionError.concurrentRequest
+            @unknown default: return AISessionError.generationFailed(String(describing: session))
+            }
+        case let parsing as GeneratedContent.ParsingError:
+            return AISessionError.generationFailed(parsing.debugDescription)
+        default:
+            return error
+        }
+    }
+
+    private static func mapped(_ error: LanguageModelError) -> AISessionError {
+        switch error {
+        case .contextSizeExceeded(let exceeded):
+            return .contextWindowExceeded(limit: exceeded.contextSize, tokenCount: exceeded.tokenCount)
+        case .guardrailViolation(let detail):
+            return .guardrailViolation(detail.debugDescription)
+        case .refusal(let detail):
+            return .refusal(detail.debugDescription)
+        case .unsupportedLanguageOrLocale(let detail):
+            return .unsupportedLanguage(detail.languageCode.identifier)
+        case .rateLimited(let detail):
+            return .rateLimited(resetDate: detail.resetDate)
+        case .timeout:
+            return .timeout
+        case .unsupportedCapability(let detail):
+            return .generationFailed(detail.debugDescription)
+        case .unsupportedTranscriptContent(let detail):
+            return .generationFailed(detail.debugDescription)
+        case .unsupportedGenerationGuide(let detail):
+            return .generationFailed(detail.debugDescription)
+        @unknown default:
+            return .generationFailed(error.debugDescription)
         }
     }
 }
@@ -33,13 +95,13 @@ public enum AISessionError: LocalizedError {
 // MARK: - AISession
 //
 // Wraps LanguageModelSession with a clean API aligned with Tonamox conventions.
-// Requires iOS 26+ / macOS 26+ with Apple Intelligence enabled.
+// Requires iOS 27 / macOS 27 / visionOS 27 with Apple Intelligence enabled.
 //
 // §Fix #20: Validates availability before creating session.
-// §Fix #21: Maps LanguageModelSession.GenerationError to typed AISessionError.
+// §Fix #21: Maps the OS 27 FoundationModels errors to typed AISessionError.
 // §Fix #22: Stream emits deltas instead of accumulated content.
 
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 public final class AISession: @unchecked Sendable {
 
     // MARK: - Public state
@@ -108,7 +170,7 @@ public final class AISession: @unchecked Sendable {
     // MARK: - Plain text
 
     /// Send a prompt and await the full response.
-    /// §Fix #21: Wraps GenerationError into typed AISessionError.
+    /// §Fix #21: Wraps FoundationModels errors into typed AISessionError.
     public func respond(
         to prompt: String,
         options: GenerationOptions = GenerationOptions()
@@ -117,7 +179,7 @@ public final class AISession: @unchecked Sendable {
             let response = try await session.respond(to: prompt, options: options)
             return response.content
         } catch {
-            throw mapGenerationError(error)
+            throw AISessionError.mapped(error)
         }
     }
 
@@ -130,23 +192,35 @@ public final class AISession: @unchecked Sendable {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    let responseStream = session.streamResponse(to: prompt, options: options)
-                    var previousContent = ""
-                    for try await partial in responseStream {
-                        let currentContent = partial.content
-                        if currentContent.count > previousContent.count {
-                            let delta = String(currentContent.dropFirst(previousContent.count))
-                            continuation.yield(delta)
-                        }
-                        previousContent = currentContent
-                    }
+                    try await self.streamDeltas(prompt, options: options) { continuation.yield($0) }
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: self.mapGenerationError(error))
+                    continuation.finish(throwing: error)
                 }
             }
             // A session takes one request at a time; an abandoned response would refuse the next one.
             continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// Like ``stream(_:options:)``, but generates in the calling task and returns or throws only once the model
+    /// stopped, so a caller can hold a lock for exactly the generation. Cancel the calling task to stop it.
+    public func streamDeltas(
+        _ prompt: String,
+        options: GenerationOptions = GenerationOptions(),
+        onDelta: @Sendable (String) -> Void
+    ) async throws {
+        do {
+            var previousContent = ""
+            for try await partial in session.streamResponse(to: prompt, options: options) {
+                let currentContent = partial.content
+                if currentContent.count > previousContent.count {
+                    onDelta(String(currentContent.dropFirst(previousContent.count)))
+                }
+                previousContent = currentContent
+            }
+        } catch {
+            throw AISessionError.mapped(error)
         }
     }
 
@@ -166,7 +240,7 @@ public final class AISession: @unchecked Sendable {
             )
             return response.content
         } catch {
-            throw mapGenerationError(error)
+            throw AISessionError.mapped(error)
         }
     }
 
@@ -190,7 +264,7 @@ public final class AISession: @unchecked Sendable {
                     }
                     continuation.finish()
                 } catch {
-                    continuation.finish(throwing: self.mapGenerationError(error))
+                    continuation.finish(throwing: AISessionError.mapped(error))
                 }
             }
             continuation.onTermination = { _ in task.cancel() }
@@ -203,29 +277,6 @@ public final class AISession: @unchecked Sendable {
     public func prewarm() {
         session.prewarm()
     }
-
-    // MARK: - Error Mapping
-    //
-    // §Fix #21: Maps FoundationModels GenerationError into typed AISessionError
-    // for downstream consumers to handle granularly.
-
-    private func mapGenerationError(_ error: Error) -> Error {
-        guard let genError = error as? LanguageModelSession.GenerationError else {
-            return error
-        }
-        switch genError {
-        case .guardrailViolation(let ctx):
-            return AISessionError.guardrailViolation(String(describing: ctx))
-        case .exceededContextWindowSize:
-            return AISessionError.contextWindowExceeded
-        case .rateLimited:
-            return AISessionError.rateLimited
-        case .concurrentRequests:
-            return AISessionError.concurrentRequest
-        default:
-            return AISessionError.generationFailed(String(describing: genError))
-        }
-    }
 }
 
 // MARK: - AIAgent
@@ -234,7 +285,7 @@ public final class AISession: @unchecked Sendable {
 // Analogous to a CrewAI Agent — has a defined responsibility and
 // can call tools to gather information before responding.
 
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 public struct AIAgent {
 
     public let role:         String
@@ -281,7 +332,7 @@ public struct AIAgent {
 // Each agent's output becomes the next agent's input.
 // Analogous to CrewAI's Crew with Process.sequential.
 
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 public final class AIPipeline: @unchecked Sendable {
 
     public let agents: [AIAgent]
@@ -348,7 +399,7 @@ public final class AIPipeline: @unchecked Sendable {
 
 // MARK: - AIAvailability
 
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 public enum AIAvailability {
 
     public enum Status: Equatable {
@@ -376,7 +427,7 @@ public enum AIAvailability {
 import SwiftUI
 
 /// Gate view — shows content only when Apple Intelligence is available.
-@available(iOS 26, macOS 26, *)
+@available(iOS 27, macOS 27, visionOS 27, *)
 public struct AIAvailabilityGate<Content: View>: View {
     let content: () -> Content
 

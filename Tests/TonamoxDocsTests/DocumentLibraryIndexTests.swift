@@ -121,6 +121,30 @@ final class DocumentLibraryIndexTests: XCTestCase {
         XCTAssertTrue(otherNeedsReembedding, "a same-width model cannot claim vectors it did not produce")
     }
 
+    // MARK: - Retrieval-only search
+
+    func testSearchReturnsRankedSourcesWithoutGenerating() async throws {
+        let (library, folder) = try await makeLibrary()
+        let document = try Self.writeDocument("ledger.txt", sentences: 30, in: folder)
+        await library.configure(embeddingProvider: StubEmbedder("stub/a", dimensions: 4), llm: await Self.llm())
+        try await library.add(url: document)
+
+        let sources = try await library.search("invoices", topK: 3)
+
+        XCTAssertEqual(sources.count, 3)
+        XCTAssertTrue(sources.allSatisfy { $0.documentTitle == "ledger" && $0.excerpt.count <= 200 })
+        XCTAssertTrue(sources.allSatisfy { $0.excerpt.contains("invoices") })
+        XCTAssertEqual(sources.map(\.score), sources.map(\.score).sorted(by: >))
+    }
+
+    func testSearchNeedsAnEmbeddingProvider() async throws {
+        let (library, _) = try await makeLibrary()
+        do {
+            _ = try await library.search("invoices")
+            XCTFail("an unconfigured library cannot embed the query")
+        } catch DocumentError.libraryNotReady {}
+    }
+
     // MARK: - Configuration
 
     func testConfigureIfNeededKeepsTheProviderAlreadySet() async throws {
